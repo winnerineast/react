@@ -1,40 +1,39 @@
-const React = window.React;
-
 import Fixture from '../../Fixture';
+const React = window.React;
 
 class InputTestCase extends React.Component {
   static defaultProps = {
     type: 'text',
     defaultValue: '',
-    parseAs: 'text'
-  }
+    parseAs: 'text',
+  };
 
-  constructor () {
+  constructor() {
     super(...arguments);
 
     this.state = {
-      value: this.props.defaultValue
+      value: this.props.defaultValue,
     };
   }
 
-  onChange = (event) => {
+  onChange = event => {
     const raw = event.target.value;
 
     switch (this.props.type) {
       case 'number':
         const parsed = parseFloat(event.target.value, 10);
 
-        this.setState({ value: isNaN(parsed) ? '' : parsed });
+        this.setState({value: isNaN(parsed) ? '' : parsed});
 
         break;
       default:
-        this.setState({ value: raw });
+        this.setState({value: raw});
     }
-  }
+  };
 
   render() {
-    const { children, type, defaultValue } = this.props;
-    const { value } = this.state;
+    const {children, type, defaultValue} = this.props;
+    const {value} = this.state;
 
     return (
       <Fixture>
@@ -44,9 +43,7 @@ class InputTestCase extends React.Component {
           <fieldset>
             <legend>Controlled {type}</legend>
             <input type={type} value={value} onChange={this.onChange} />
-            <p className="hint">
-              Value: {JSON.stringify(this.state.value)}
-            </p>
+            <p className="hint">Value: {JSON.stringify(this.state.value)}</p>
           </fieldset>
 
           <fieldset>
