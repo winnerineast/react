@@ -1,14 +1,15 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @providesModule findDOMNode
+ * @flow
+ * @format
  */
 
 'use strict';
 
-const {findDOMNode} = require('ReactDOM-fb');
+const {findDOMNode} = require('ReactDOM');
 
 module.exports = findDOMNode;

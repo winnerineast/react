@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -7,24 +7,17 @@
 
 'use strict';
 
-var path = require('path');
-var spawn = require('child_process').spawn;
+const runESLint = require('../eslint');
 
-var extension = process.platform === 'win32' ? '.cmd' : '';
+console.log('Linting all files...');
+// https://circleci.com/docs/2.0/env-vars/#circleci-environment-variable-descriptions
+if (!process.env.CI) {
+  console.log('Hint: run `yarn linc` to only lint changed files.');
+}
 
-spawn(
-  path.join('node_modules', '.bin', 'eslint' + extension),
-  ['.', '--max-warnings=0'],
-  {
-    // Allow colors to pass through
-    stdio: 'inherit',
-  }
-).on('close', function(code) {
-  if (code !== 0) {
-    console.error('Lint failed');
-  } else {
-    console.log('Lint passed');
-  }
-
-  process.exit(code);
-});
+if (runESLint({onlyChanged: false})) {
+  console.log('Lint passed.');
+} else {
+  console.log('Lint failed.');
+  process.exit(1);
+}

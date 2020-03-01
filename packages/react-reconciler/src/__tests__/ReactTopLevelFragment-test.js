@@ -1,16 +1,18 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
  * @emails react-core
+ * @jest-environment node
  */
 
 'use strict';
 
-var React;
-var ReactNoop;
+let React;
+let ReactNoop;
+let Scheduler;
 
 // This is a new feature in Fiber so I put it in its own test file. It could
 // probably move to one of the other test files once it is official.
@@ -19,6 +21,7 @@ describe('ReactTopLevelFragment', function() {
     jest.resetModules();
     React = require('react');
     ReactNoop = require('react-noop-renderer');
+    Scheduler = require('scheduler');
   });
 
   it('should render a simple fragment at the top of a component', function() {
@@ -26,11 +29,11 @@ describe('ReactTopLevelFragment', function() {
       return [<div key="a">Hello</div>, <div key="b">World</div>];
     }
     ReactNoop.render(<Fragment />);
-    ReactNoop.flush();
+    expect(Scheduler).toFlushWithoutYielding();
   });
 
   it('should preserve state when switching from a single child', function() {
-    var instance = null;
+    let instance = null;
 
     class Stateful extends React.Component {
       render() {
@@ -47,22 +50,22 @@ describe('ReactTopLevelFragment', function() {
       );
     }
     ReactNoop.render(<Fragment />);
-    ReactNoop.flush();
+    expect(Scheduler).toFlushWithoutYielding();
 
-    var instanceA = instance;
+    const instanceA = instance;
 
     expect(instanceA).not.toBe(null);
 
     ReactNoop.render(<Fragment condition={true} />);
-    ReactNoop.flush();
+    expect(Scheduler).toFlushWithoutYielding();
 
-    var instanceB = instance;
+    const instanceB = instance;
 
     expect(instanceB).toBe(instanceA);
   });
 
   it('should not preserve state when switching to a nested array', function() {
-    var instance = null;
+    let instance = null;
 
     class Stateful extends React.Component {
       render() {
@@ -79,22 +82,22 @@ describe('ReactTopLevelFragment', function() {
       );
     }
     ReactNoop.render(<Fragment />);
-    ReactNoop.flush();
+    expect(Scheduler).toFlushWithoutYielding();
 
-    var instanceA = instance;
+    const instanceA = instance;
 
     expect(instanceA).not.toBe(null);
 
     ReactNoop.render(<Fragment condition={true} />);
-    ReactNoop.flush();
+    expect(Scheduler).toFlushWithoutYielding();
 
-    var instanceB = instance;
+    const instanceB = instance;
 
     expect(instanceB).not.toBe(instanceA);
   });
 
   it('preserves state if an implicit key slot switches from/to null', function() {
-    var instance = null;
+    let instance = null;
 
     class Stateful extends React.Component {
       render() {
@@ -109,29 +112,29 @@ describe('ReactTopLevelFragment', function() {
         : [<div key="b">Hello</div>, <Stateful key="a" />];
     }
     ReactNoop.render(<Fragment />);
-    ReactNoop.flush();
+    expect(Scheduler).toFlushWithoutYielding();
 
-    var instanceA = instance;
+    const instanceA = instance;
 
     expect(instanceA).not.toBe(null);
 
     ReactNoop.render(<Fragment condition={true} />);
-    ReactNoop.flush();
+    expect(Scheduler).toFlushWithoutYielding();
 
-    var instanceB = instance;
+    const instanceB = instance;
 
     expect(instanceB).toBe(instanceA);
 
     ReactNoop.render(<Fragment condition={false} />);
-    ReactNoop.flush();
+    expect(Scheduler).toFlushWithoutYielding();
 
-    var instanceC = instance;
+    const instanceC = instance;
 
     expect(instanceC === instanceA).toBe(true);
   });
 
   it('should preserve state in a reorder', function() {
-    var instance = null;
+    let instance = null;
 
     class Stateful extends React.Component {
       render() {
@@ -146,16 +149,16 @@ describe('ReactTopLevelFragment', function() {
         : [[<Stateful key="a" />, <div key="b">World</div>], <div key="c" />];
     }
     ReactNoop.render(<Fragment />);
-    ReactNoop.flush();
+    expect(Scheduler).toFlushWithoutYielding();
 
-    var instanceA = instance;
+    const instanceA = instance;
 
     expect(instanceA).not.toBe(null);
 
     ReactNoop.render(<Fragment condition={true} />);
-    ReactNoop.flush();
+    expect(Scheduler).toFlushWithoutYielding();
 
-    var instanceB = instance;
+    const instanceB = instance;
 
     expect(instanceB).toBe(instanceA);
   });

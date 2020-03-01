@@ -2,6 +2,7 @@ import Fixture from '../../Fixture';
 import FixtureSet from '../../FixtureSet';
 import TestCase from '../../TestCase';
 import InputTestCase from './InputTestCase';
+import ReplaceEmailInput from './ReplaceEmailInput';
 
 const React = window.React;
 
@@ -42,6 +43,61 @@ class TextInputFixtures extends React.Component {
           </p>
         </TestCase>
 
+        <TestCase
+          title="Required Inputs"
+          affectedBrowsers="Firefox"
+          relatedIssues="8395">
+          <TestCase.Steps>
+            <li>View this test in Firefox</li>
+          </TestCase.Steps>
+
+          <TestCase.ExpectedResult>
+            You should{' '}
+            <b>
+              <i>not</i>
+            </b>{' '}
+            see a red aura, indicating the input is invalid.
+            <br />
+            This aura looks roughly like:
+            <input style={{boxShadow: '0 0 1px 1px red', marginLeft: 8}} />
+          </TestCase.ExpectedResult>
+
+          <Fixture>
+            <form className="control-box">
+              <fieldset>
+                <legend>Empty value prop string</legend>
+                <input value="" required={true} />
+              </fieldset>
+              <fieldset>
+                <legend>No value prop</legend>
+                <input required={true} />
+              </fieldset>
+              <fieldset>
+                <legend>Empty defaultValue prop string</legend>
+                <input required={true} defaultValue="" />
+              </fieldset>
+              <fieldset>
+                <legend>No value prop date input</legend>
+                <input type="date" required={true} />
+              </fieldset>
+              <fieldset>
+                <legend>Empty value prop date input</legend>
+                <input type="date" value="" required={true} />
+              </fieldset>
+            </form>
+          </Fixture>
+
+          <p className="footnote">
+            Checking the date type is also important because of a prior fix for
+            iOS Safari that involved assigning over value/defaultValue
+            properties of the input to prevent a display bug. This also triggers
+            input validation.
+          </p>
+          <p className="footnote">
+            The date inputs should be blank in iOS. This is not a bug.
+          </p>
+        </TestCase>
+
         <TestCase title="Cursor when editing email inputs">
           <TestCase.Steps>
             <li>Type "user@example.com"</li>
@@ -68,6 +124,21 @@ class TextInputFixtures extends React.Component {
           </TestCase.ExpectedResult>
 
           <InputTestCase type="url" defaultValue="" />
+        </TestCase>
+
+        <TestCase
+          title="Replacing email input with text disabled input"
+          relatedIssues="12062">
+          <TestCase.Steps>
+            <li>Type "test@test.com"</li>
+            <li>Press enter</li>
+          </TestCase.Steps>
+
+          <TestCase.ExpectedResult>
+            There should be no selection-related error in the console.
+          </TestCase.ExpectedResult>
+
+          <ReplaceEmailInput />
         </TestCase>
 
         <TestCase title="All inputs" description="General test of all inputs">

@@ -1,18 +1,24 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-import checkPropTypes from 'prop-types/checkPropTypes';
+import checkPropTypes from 'shared/checkPropTypes';
+import ReactSharedInternals from 'shared/ReactSharedInternals';
+import {enableDeprecatedFlareAPI} from 'shared/ReactFeatureFlags';
 
-var ReactControlledValuePropTypes = {
+let ReactDebugCurrentFrame = null;
+
+const ReactControlledValuePropTypes = {
   checkPropTypes: null,
 };
 
 if (__DEV__) {
-  var hasReadOnlyValue = {
+  ReactDebugCurrentFrame = ReactSharedInternals.ReactDebugCurrentFrame;
+
+  const hasReadOnlyValue = {
     button: true,
     checkbox: true,
     image: true,
@@ -22,14 +28,15 @@ if (__DEV__) {
     submit: true,
   };
 
-  var propTypes = {
+  const propTypes = {
     value: function(props, propName, componentName) {
       if (
-        !props[propName] ||
         hasReadOnlyValue[props.type] ||
         props.onChange ||
         props.readOnly ||
-        props.disabled
+        props.disabled ||
+        props[propName] == null ||
+        (enableDeprecatedFlareAPI && props.DEPRECATED_flareListeners)
       ) {
         return null;
       }
@@ -42,10 +49,11 @@ if (__DEV__) {
     },
     checked: function(props, propName, componentName) {
       if (
-        !props[propName] ||
         props.onChange ||
         props.readOnly ||
-        props.disabled
+        props.disabled ||
+        props[propName] == null ||
+        (enableDeprecatedFlareAPI && props.DEPRECATED_flareListeners)
       ) {
         return null;
       }
@@ -62,12 +70,14 @@ if (__DEV__) {
    * Provide a linked `value` attribute for controlled forms. You should not use
    * this outside of the ReactDOM controlled form components.
    */
-  ReactControlledValuePropTypes.checkPropTypes = function(
-    tagName,
-    props,
-    getStack,
-  ) {
-    checkPropTypes(propTypes, props, 'prop', tagName, getStack);
+  ReactControlledValuePropTypes.checkPropTypes = function(tagName, props) {
+    checkPropTypes(
+      propTypes,
+      props,
+      'prop',
+      tagName,
+      ReactDebugCurrentFrame.getStackAddendum,
+    );
   };
 }
 

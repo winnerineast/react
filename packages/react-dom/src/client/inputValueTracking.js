@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -7,12 +7,12 @@
  * @flow
  */
 
-type ValueTracker = {
+type ValueTracker = {|
   getValue(): string,
   setValue(value: string): void,
   stopTracking(): void,
-};
-type WrapperState = {_valueTracker: ?ValueTracker};
+|};
+type WrapperState = {_valueTracker?: ?ValueTracker, ...};
 type ElementWithValueTracker = HTMLInputElement & WrapperState;
 
 function isCheckable(elem: HTMLInputElement) {
@@ -63,22 +63,29 @@ function trackValueOnNode(node: any): ?ValueTracker {
   // (needed for certain tests that spyOn input values and Safari)
   if (
     node.hasOwnProperty(valueField) ||
+    typeof descriptor === 'undefined' ||
     typeof descriptor.get !== 'function' ||
     typeof descriptor.set !== 'function'
   ) {
     return;
   }
-
+  const {get, set} = descriptor;
   Object.defineProperty(node, valueField, {
-    enumerable: descriptor.enumerable,
     configurable: true,
     get: function() {
-      return descriptor.get.call(this);
+      return get.call(this);
     },
     set: function(value) {
       currentValue = '' + value;
-      descriptor.set.call(this, value);
+      set.call(this, value);
     },
+  });
+  // We could've passed this the first time
+  // but it triggers a bug in IE11 and Edge 14/15.
+  // Calling defineProperty() again should be equivalent.
+  // https://github.com/facebook/react/issues/11768
+  Object.defineProperty(node, valueField, {
+    enumerable: descriptor.enumerable,
   });
 
   const tracker = {
@@ -95,11 +102,6 @@ function trackValueOnNode(node: any): ?ValueTracker {
   };
   return tracker;
 }
-
-export {
-  // exposed for testing
-  getTracker as _getTrackerFromNode,
-};
 
 export function track(node: ElementWithValueTracker) {
   if (getTracker(node)) {

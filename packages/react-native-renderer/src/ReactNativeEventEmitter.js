@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -7,16 +7,23 @@
  * @flow
  */
 
-import {getListener} from 'events/EventPluginHub';
-import {registrationNameModules} from 'events/EventPluginRegistry';
-import {batchedUpdates} from 'events/ReactGenericBatching';
-import {handleTopLevel} from 'events/ReactEventEmitterMixin';
-import warning from 'fbjs/lib/warning';
+import type {AnyNativeEvent} from 'legacy-events/PluginModuleType';
+import type {EventSystemFlags} from 'legacy-events/EventSystemFlags';
+import type {Fiber} from 'react-reconciler/src/ReactFiber';
+import type {PluginModule} from 'legacy-events/PluginModuleType';
+import type {ReactSyntheticEvent} from 'legacy-events/ReactSyntheticEventType';
+import type {TopLevelType} from 'legacy-events/TopLevelEventTypes';
+
+import {PLUGIN_EVENT_SYSTEM} from 'legacy-events/EventSystemFlags';
+import {registrationNameModules} from 'legacy-events/EventPluginRegistry';
+import {batchedUpdates} from 'legacy-events/ReactGenericBatching';
+import {runEventsInBatch} from 'legacy-events/EventBatching';
+import {plugins} from 'legacy-events/EventPluginRegistry';
+import getListener from 'legacy-events/getListener';
+import accumulateInto from 'legacy-events/accumulateInto';
 
 import {getInstanceFromNode} from './ReactNativeComponentTree';
-import ReactNativeTagHandles from './ReactNativeTagHandles';
 
-export * from 'events/ReactEventEmitterMixin';
 export {getListener, registrationNameModules as registrationNames};
 
 /**
@@ -25,7 +32,7 @@ export {getListener, registrationNameModules as registrationNames};
  */
 
 // Shared default empty native event - conserve memory.
-var EMPTY_NATIVE_EVENT = {};
+const EMPTY_NATIVE_EVENT = (({}: any): AnyNativeEvent);
 
 /**
  * Selects a subsequence of `Touch`es, without destroying `touches`.
@@ -34,9 +41,9 @@ var EMPTY_NATIVE_EVENT = {};
  * @param {Array<number>} indices Indices by which to pull subsequence.
  * @return {Array<Touch>} Subsequence of touch objects.
  */
-var touchSubsequence = function(touches, indices) {
-  var ret = [];
-  for (var i = 0; i < indices.length; i++) {
+const touchSubsequence = function(touches, indices) {
+  const ret = [];
+  for (let i = 0; i < indices.length; i++) {
     ret.push(touches[indices[i]]);
   }
   return ret;
@@ -53,22 +60,22 @@ var touchSubsequence = function(touches, indices) {
  * @param {Array<number>} indices Indices to remove from `touches`.
  * @return {Array<Touch>} Subsequence of removed touch objects.
  */
-var removeTouchesAtIndices = function(
+const removeTouchesAtIndices = function(
   touches: Array<Object>,
   indices: Array<number>,
 ): Array<Object> {
-  var rippedOut = [];
+  const rippedOut = [];
   // use an unsafe downcast to alias to nullable elements,
   // so we can delete and then compact.
-  var temp: Array<?Object> = (touches: Array<any>);
-  for (var i = 0; i < indices.length; i++) {
-    var index = indices[i];
+  const temp: Array<?Object> = (touches: Array<any>);
+  for (let i = 0; i < indices.length; i++) {
+    const index = indices[i];
     rippedOut.push(touches[index]);
     temp[index] = null;
   }
-  var fillAt = 0;
-  for (var j = 0; j < temp.length; j++) {
-    var cur = temp[j];
+  let fillAt = 0;
+  for (let j = 0; j < temp.length; j++) {
+    const cur = temp[j];
     if (cur !== null) {
       temp[fillAt++] = cur;
     }
@@ -87,18 +94,81 @@ var removeTouchesAtIndices = function(
  * @param {TopLevelType} topLevelType Top level type of event.
  * @param {?object} nativeEventParam Object passed from native.
  */
-export function _receiveRootNodeIDEvent(
+function _receiveRootNodeIDEvent(
   rootNodeID: number,
-  topLevelType: string,
-  nativeEventParam: ?Object,
+  topLevelType: TopLevelType,
+  nativeEventParam: ?AnyNativeEvent,
 ) {
-  var nativeEvent = nativeEventParam || EMPTY_NATIVE_EVENT;
-  var inst = getInstanceFromNode(rootNodeID);
+  const nativeEvent = nativeEventParam || EMPTY_NATIVE_EVENT;
+  const inst = getInstanceFromNode(rootNodeID);
+
+  let target = null;
+  if (inst != null) {
+    target = inst.stateNode;
+  }
+
   batchedUpdates(function() {
-    handleTopLevel(topLevelType, inst, nativeEvent, nativeEvent.target);
+    runExtractedPluginEventsInBatch(
+      topLevelType,
+      inst,
+      nativeEvent,
+      target,
+      PLUGIN_EVENT_SYSTEM,
+    );
   });
   // React Native doesn't use ReactControlledComponent but if it did, here's
   // where it would do it.
+}
+
+/**
+ * Allows registered plugins an opportunity to extract events from top-level
+ * native browser events.
+ *
+ * @return {*} An accumulation of synthetic events.
+ * @internal
+ */
+function extractPluginEvents(
+  topLevelType: TopLevelType,
+  targetInst: null | Fiber,
+  nativeEvent: AnyNativeEvent,
+  nativeEventTarget: null | EventTarget,
+  eventSystemFlags: EventSystemFlags,
+): Array<ReactSyntheticEvent> | ReactSyntheticEvent | null {
+  let events = null;
+  for (let i = 0; i < plugins.length; i++) {
+    // Not every plugin in the ordering may be loaded at runtime.
+    const possiblePlugin: PluginModule<AnyNativeEvent> = plugins[i];
+    if (possiblePlugin) {
+      const extractedEvents = possiblePlugin.extractEvents(
+        topLevelType,
+        targetInst,
+        nativeEvent,
+        nativeEventTarget,
+        eventSystemFlags,
+      );
+      if (extractedEvents) {
+        events = accumulateInto(events, extractedEvents);
+      }
+    }
+  }
+  return events;
+}
+
+function runExtractedPluginEventsInBatch(
+  topLevelType: TopLevelType,
+  targetInst: null | Fiber,
+  nativeEvent: AnyNativeEvent,
+  nativeEventTarget: null | EventTarget,
+  eventSystemFlags: EventSystemFlags,
+) {
+  const events = extractPluginEvents(
+    topLevelType,
+    targetInst,
+    nativeEvent,
+    nativeEventTarget,
+    eventSystemFlags,
+  );
+  runEventsInBatch(events);
 }
 
 /**
@@ -110,8 +180,8 @@ export function _receiveRootNodeIDEvent(
  */
 export function receiveEvent(
   rootNodeID: number,
-  topLevelType: string,
-  nativeEventParam: Object,
+  topLevelType: TopLevelType,
+  nativeEventParam: AnyNativeEvent,
 ) {
   _receiveRootNodeIDEvent(rootNodeID, topLevelType, nativeEventParam);
 }
@@ -141,30 +211,29 @@ export function receiveEvent(
  * identifier 0, also abandoning traditional click handlers.
  */
 export function receiveTouches(
-  eventTopLevelType: string,
+  eventTopLevelType: TopLevelType,
   touches: Array<Object>,
   changedIndices: Array<number>,
 ) {
-  var changedTouches =
+  const changedTouches =
     eventTopLevelType === 'topTouchEnd' ||
     eventTopLevelType === 'topTouchCancel'
       ? removeTouchesAtIndices(touches, changedIndices)
       : touchSubsequence(touches, changedIndices);
 
-  for (var jj = 0; jj < changedTouches.length; jj++) {
-    var touch = changedTouches[jj];
+  for (let jj = 0; jj < changedTouches.length; jj++) {
+    const touch = changedTouches[jj];
     // Touch objects can fulfill the role of `DOM` `Event` objects if we set
     // the `changedTouches`/`touches`. This saves allocations.
     touch.changedTouches = changedTouches;
     touch.touches = touches;
-    var nativeEvent = touch;
-    var rootNodeID = null;
-    var target = nativeEvent.target;
+    const nativeEvent = touch;
+    let rootNodeID = null;
+    const target = nativeEvent.target;
     if (target !== null && target !== undefined) {
-      if (target < ReactNativeTagHandles.tagsStartAt) {
+      if (target < 1) {
         if (__DEV__) {
-          warning(
-            false,
+          console.error(
             'A view is reporting that a touch occurred on tag zero.',
           );
         }

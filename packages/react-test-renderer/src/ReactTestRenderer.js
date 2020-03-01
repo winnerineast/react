@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -9,258 +9,85 @@
 
 import type {Fiber} from 'react-reconciler/src/ReactFiber';
 import type {FiberRoot} from 'react-reconciler/src/ReactFiberRoot';
+import type {Instance, TextInstance} from './ReactTestHostConfig';
 
-import ReactFiberReconciler from 'react-reconciler';
-import {batchedUpdates} from 'events/ReactGenericBatching';
-import {findCurrentFiberUsingSlowPath} from 'shared/ReactFiberTreeReflection';
-import emptyObject from 'fbjs/lib/emptyObject';
+import * as Scheduler from 'scheduler/unstable_mock';
+import {
+  getPublicRootInstance,
+  createContainer,
+  updateContainer,
+  flushSync,
+  injectIntoDevTools,
+  batchedUpdates,
+  act,
+} from 'react-reconciler/inline.test';
+import {findCurrentFiberUsingSlowPath} from 'react-reconciler/reflection';
 import {
   Fragment,
-  FunctionalComponent,
+  FunctionComponent,
   ClassComponent,
   HostComponent,
+  HostPortal,
   HostText,
   HostRoot,
-} from 'shared/ReactTypeOfWork';
-import invariant from 'fbjs/lib/invariant';
+  ContextConsumer,
+  ContextProvider,
+  Mode,
+  ForwardRef,
+  Profiler,
+  MemoComponent,
+  SimpleMemoComponent,
+  Block,
+  IncompleteClassComponent,
+  ScopeComponent,
+} from 'shared/ReactWorkTags';
+import invariant from 'shared/invariant';
+import getComponentName from 'shared/getComponentName';
+import ReactVersion from 'shared/ReactVersion';
+
+import {getPublicInstance} from './ReactTestHostConfig';
+import {ConcurrentRoot, LegacyRoot} from 'shared/ReactRootTags';
 
 type TestRendererOptions = {
   createNodeMock: (element: React$Element<any>) => any,
+  unstable_isConcurrent: boolean,
+  ...
 };
 
 type ReactTestRendererJSON = {|
   type: string,
-  props: {[propName: string]: any},
+  props: {[propName: string]: any, ...},
   children: null | Array<ReactTestRendererNode>,
   $$typeof?: Symbol, // Optional because we add it with defineProperty().
 |};
 type ReactTestRendererNode = ReactTestRendererJSON | string;
 
-type Container = {|
-  children: Array<Instance | TextInstance>,
-  createNodeMock: Function,
-  tag: 'CONTAINER',
-|};
-
-type Props = Object;
-type Instance = {|
-  type: string,
-  props: Object,
-  children: Array<Instance | TextInstance>,
-  rootContainerInstance: Container,
-  tag: 'INSTANCE',
-|};
-
-type TextInstance = {|
-  text: string,
-  tag: 'TEXT',
-|};
-
 type FindOptions = $Shape<{
   // performs a "greedy" search: if a matching node is found, will continue
   // to search within the matching node's children. (default: true)
   deep: boolean,
+  ...
 }>;
 
 export type Predicate = (node: ReactTestInstance) => ?boolean;
 
-const UPDATE_SIGNAL = {};
-
-function getPublicInstance(inst: Instance | TextInstance): * {
-  switch (inst.tag) {
-    case 'INSTANCE':
-      const createNodeMock = inst.rootContainerInstance.createNodeMock;
-      return createNodeMock({
-        type: inst.type,
-        props: inst.props,
-      });
-    default:
-      return inst;
-  }
-}
-
-function appendChild(
-  parentInstance: Instance | Container,
-  child: Instance | TextInstance,
-): void {
-  const index = parentInstance.children.indexOf(child);
-  if (index !== -1) {
-    parentInstance.children.splice(index, 1);
-  }
-  parentInstance.children.push(child);
-}
-
-function insertBefore(
-  parentInstance: Instance | Container,
-  child: Instance | TextInstance,
-  beforeChild: Instance | TextInstance,
-): void {
-  const index = parentInstance.children.indexOf(child);
-  if (index !== -1) {
-    parentInstance.children.splice(index, 1);
-  }
-  const beforeIndex = parentInstance.children.indexOf(beforeChild);
-  parentInstance.children.splice(beforeIndex, 0, child);
-}
-
-function removeChild(
-  parentInstance: Instance | Container,
-  child: Instance | TextInstance,
-): void {
-  const index = parentInstance.children.indexOf(child);
-  parentInstance.children.splice(index, 1);
-}
-
-var TestRenderer = ReactFiberReconciler({
-  getRootHostContext() {
-    return emptyObject;
-  },
-
-  getChildHostContext() {
-    return emptyObject;
-  },
-
-  prepareForCommit(): void {
-    // noop
-  },
-
-  resetAfterCommit(): void {
-    // noop
-  },
-
-  createInstance(
-    type: string,
-    props: Props,
-    rootContainerInstance: Container,
-    hostContext: Object,
-    internalInstanceHandle: Object,
-  ): Instance {
-    return {
-      type,
-      props,
-      children: [],
-      rootContainerInstance,
-      tag: 'INSTANCE',
-    };
-  },
-
-  appendInitialChild(
-    parentInstance: Instance,
-    child: Instance | TextInstance,
-  ): void {
-    const index = parentInstance.children.indexOf(child);
-    if (index !== -1) {
-      parentInstance.children.splice(index, 1);
-    }
-    parentInstance.children.push(child);
-  },
-
-  finalizeInitialChildren(
-    testElement: Instance,
-    type: string,
-    props: Props,
-    rootContainerInstance: Container,
-  ): boolean {
-    return false;
-  },
-
-  prepareUpdate(
-    testElement: Instance,
-    type: string,
-    oldProps: Props,
-    newProps: Props,
-    rootContainerInstance: Container,
-    hostContext: Object,
-  ): null | {} {
-    return UPDATE_SIGNAL;
-  },
-
-  shouldSetTextContent(type: string, props: Props): boolean {
-    return false;
-  },
-
-  shouldDeprioritizeSubtree(type: string, props: Props): boolean {
-    return false;
-  },
-
-  createTextInstance(
-    text: string,
-    rootContainerInstance: Container,
-    hostContext: Object,
-    internalInstanceHandle: Object,
-  ): TextInstance {
-    return {
-      text,
-      tag: 'TEXT',
-    };
-  },
-
-  scheduleDeferredCallback(fn: Function): void {
-    setTimeout(fn, 0, {timeRemaining: Infinity});
-  },
-
-  useSyncScheduling: true,
-
-  getPublicInstance,
-
-  now(): number {
-    // Test renderer does not use expiration
-    return 0;
-  },
-
-  mutation: {
-    commitUpdate(
-      instance: Instance,
-      updatePayload: {},
-      type: string,
-      oldProps: Props,
-      newProps: Props,
-      internalInstanceHandle: Object,
-    ): void {
-      instance.type = type;
-      instance.props = newProps;
-    },
-
-    commitMount(
-      instance: Instance,
-      type: string,
-      newProps: Props,
-      internalInstanceHandle: Object,
-    ): void {
-      // noop
-    },
-
-    commitTextUpdate(
-      textInstance: TextInstance,
-      oldText: string,
-      newText: string,
-    ): void {
-      textInstance.text = newText;
-    },
-    resetTextContent(testElement: Instance): void {
-      // noop
-    },
-
-    appendChild: appendChild,
-    appendChildToContainer: appendChild,
-    insertBefore: insertBefore,
-    insertInContainerBefore: insertBefore,
-    removeChild: removeChild,
-    removeChildFromContainer: removeChild,
-  },
-});
-
-var defaultTestOptions = {
+const defaultTestOptions = {
   createNodeMock: function() {
     return null;
   },
 };
 
-function toJSON(inst: Instance | TextInstance): ReactTestRendererNode {
+function toJSON(inst: Instance | TextInstance): ReactTestRendererNode | null {
+  if (inst.isHidden) {
+    // Omit timed out children from output entirely. This seems like the least
+    // surprising behavior. We could perhaps add a separate API that includes
+    // them, if it turns out people need it.
+    return null;
+  }
   switch (inst.tag) {
     case 'TEXT':
       return inst.text;
-    case 'INSTANCE':
+    case 'INSTANCE': {
       /* eslint-disable no-unused-vars */
       // We don't include the `children` prop in JSON.
       // Instead, we will include the actual rendered children.
@@ -268,7 +95,16 @@ function toJSON(inst: Instance | TextInstance): ReactTestRendererNode {
       /* eslint-enable */
       let renderedChildren = null;
       if (inst.children && inst.children.length) {
-        renderedChildren = inst.children.map(toJSON);
+        for (let i = 0; i < inst.children.length; i++) {
+          const renderedChild = toJSON(inst.children[i]);
+          if (renderedChild !== null) {
+            if (renderedChildren === null) {
+              renderedChildren = [renderedChild];
+            } else {
+              renderedChildren.push(renderedChild);
+            }
+          }
+        }
       }
       const json: ReactTestRendererJSON = {
         type: inst.type,
@@ -279,24 +115,52 @@ function toJSON(inst: Instance | TextInstance): ReactTestRendererNode {
         value: Symbol.for('react.test.json'),
       });
       return json;
+    }
     default:
       throw new Error(`Unexpected node type in toJSON: ${inst.tag}`);
   }
 }
 
-function nodeAndSiblingsTrees(nodeWithSibling: ?Fiber) {
-  var array = [];
-  var node = nodeWithSibling;
+function childrenToTree(node) {
+  if (!node) {
+    return null;
+  }
+  const children = nodeAndSiblingsArray(node);
+  if (children.length === 0) {
+    return null;
+  } else if (children.length === 1) {
+    return toTree(children[0]);
+  }
+  return flatten(children.map(toTree));
+}
+
+function nodeAndSiblingsArray(nodeWithSibling) {
+  const array = [];
+  let node = nodeWithSibling;
   while (node != null) {
     array.push(node);
     node = node.sibling;
   }
-  const trees = array.map(toTree);
-  return trees.length ? trees : null;
+  return array;
 }
 
-function hasSiblings(node: ?Fiber) {
-  return node && node.sibling;
+function flatten(arr) {
+  const result = [];
+  const stack = [{i: 0, array: arr}];
+  while (stack.length) {
+    const n = stack.pop();
+    while (n.i < n.array.length) {
+      const el = n.array[n.i];
+      n.i += 1;
+      if (Array.isArray(el)) {
+        stack.push(n);
+        stack.push({i: 0, array: el});
+        break;
+      }
+      result.push(el);
+    }
+  }
+  return result;
 }
 
 function toTree(node: ?Fiber) {
@@ -304,38 +168,56 @@ function toTree(node: ?Fiber) {
     return null;
   }
   switch (node.tag) {
-    case HostRoot: // 3
-      return toTree(node.child);
+    case HostRoot:
+      return childrenToTree(node.child);
+    case HostPortal:
+      return childrenToTree(node.child);
     case ClassComponent:
       return {
         nodeType: 'component',
         type: node.type,
         props: {...node.memoizedProps},
         instance: node.stateNode,
-        rendered: hasSiblings(node.child)
-          ? nodeAndSiblingsTrees(node.child)
-          : toTree(node.child),
+        rendered: childrenToTree(node.child),
       };
-    case FunctionalComponent: // 1
+    case FunctionComponent:
+    case SimpleMemoComponent:
       return {
         nodeType: 'component',
         type: node.type,
         props: {...node.memoizedProps},
         instance: null,
-        rendered: hasSiblings(node.child)
-          ? nodeAndSiblingsTrees(node.child)
-          : toTree(node.child),
+        rendered: childrenToTree(node.child),
       };
-    case HostComponent: // 5
+    case Block:
+      return {
+        nodeType: 'block',
+        type: node.type,
+        props: {...node.memoizedProps},
+        instance: null,
+        rendered: childrenToTree(node.child),
+      };
+    case HostComponent: {
       return {
         nodeType: 'host',
         type: node.type,
         props: {...node.memoizedProps},
         instance: null, // TODO: use createNodeMock here somehow?
-        rendered: nodeAndSiblingsTrees(node.child),
+        rendered: flatten(nodeAndSiblingsArray(node.child).map(toTree)),
       };
-    case HostText: // 6
+    }
+    case HostText:
       return node.stateNode.text;
+    case Fragment:
+    case ContextProvider:
+    case ContextConsumer:
+    case Mode:
+    case Profiler:
+    case ForwardRef:
+    case MemoComponent:
+    case IncompleteClassComponent:
+    case ScopeComponent:
+      return childrenToTree(node.child);
     default:
       invariant(
         false,
@@ -345,24 +227,52 @@ function toTree(node: ?Fiber) {
   }
 }
 
-const fiberToWrapper = new WeakMap();
-function wrapFiber(fiber: Fiber): ReactTestInstance {
-  let wrapper = fiberToWrapper.get(fiber);
-  if (wrapper === undefined && fiber.alternate !== null) {
-    wrapper = fiberToWrapper.get(fiber.alternate);
-  }
-  if (wrapper === undefined) {
-    wrapper = new ReactTestInstance(fiber);
-    fiberToWrapper.set(fiber, wrapper);
-  }
-  return wrapper;
-}
-
 const validWrapperTypes = new Set([
-  FunctionalComponent,
+  FunctionComponent,
   ClassComponent,
   HostComponent,
+  ForwardRef,
+  MemoComponent,
+  SimpleMemoComponent,
+  Block,
+  // Normally skipped, but used when there's more than one root child.
+  HostRoot,
 ]);
+
+function getChildren(parent: Fiber) {
+  const children = [];
+  const startingNode = parent;
+  let node: Fiber = startingNode;
+  if (node.child === null) {
+    return children;
+  }
+  node.child.return = node;
+  node = node.child;
+  outer: while (true) {
+    let descend = false;
+    if (validWrapperTypes.has(node.tag)) {
+      children.push(wrapFiber(node));
+    } else if (node.tag === HostText) {
+      children.push('' + node.memoizedProps);
+    } else {
+      descend = true;
+    }
+    if (descend && node.child !== null) {
+      node.child.return = node;
+      node = node.child;
+      continue;
+    }
+    while (node.sibling === null) {
+      if (node.return === startingNode) {
+        break outer;
+      }
+      node = (node.return: any);
+    }
+    (node.sibling: any).return = node.return;
+    node = (node.sibling: any);
+  }
+  return children;
+}
 
 class ReactTestInstance {
   _fiber: Fiber;
@@ -405,58 +315,25 @@ class ReactTestInstance {
   }
 
   get parent(): ?ReactTestInstance {
-    const parent = this._fiber.return;
-    return parent === null || parent.tag === HostRoot
-      ? null
-      : wrapFiber(parent);
+    let parent = this._fiber.return;
+    while (parent !== null) {
+      if (validWrapperTypes.has(parent.tag)) {
+        if (parent.tag === HostRoot) {
+          // Special case: we only "materialize" instances for roots
+          // if they have more than a single child. So we'll check that now.
+          if (getChildren(parent).length < 2) {
+            return null;
+          }
+        }
+        return wrapFiber(parent);
+      }
+      parent = parent.return;
+    }
+    return null;
   }
 
   get children(): Array<ReactTestInstance | string> {
-    const children = [];
-    const startingNode = this._currentFiber();
-    let node: Fiber = startingNode;
-    if (node.child === null) {
-      return children;
-    }
-    node.child.return = node;
-    node = node.child;
-    outer: while (true) {
-      let descend = false;
-      switch (node.tag) {
-        case FunctionalComponent:
-        case ClassComponent:
-        case HostComponent:
-          children.push(wrapFiber(node));
-          break;
-        case HostText:
-          children.push('' + node.memoizedProps);
-          break;
-        case Fragment:
-          descend = true;
-          break;
-        default:
-          invariant(
-            false,
-            'Unsupported component type %s in test renderer. ' +
-              'This is probably a bug in React.',
-            node.tag,
-          );
-      }
-      if (descend && node.child !== null) {
-        node.child.return = node;
-        node = node.child;
-        continue;
-      }
-      while (node.sibling === null) {
-        if (node.return === startingNode) {
-          break outer;
-        }
-        node = (node.return: any);
-      }
-      (node.sibling: any).return = node.return;
-      node = (node.sibling: any);
-    }
-    return children;
+    return getChildren(this._currentFiber());
   }
 
   // Custom search functions
@@ -470,7 +347,7 @@ class ReactTestInstance {
   findByType(type: any): ReactTestInstance {
     return expectOne(
       this.findAllByType(type, {deep: false}),
-      `with node type: "${type.displayName || type.name}"`,
+      `with node type: "${getComponentName(type) || 'Unknown'}"`,
     );
   }
 
@@ -522,12 +399,12 @@ function findAll(
     }
   }
 
-  for (const child of root.children) {
+  root.children.forEach(child => {
     if (typeof child === 'string') {
-      continue;
+      return;
     }
     results.push(...findAll(child, predicate, options));
-  }
+  });
 
   return results;
 }
@@ -557,85 +434,157 @@ function propsMatch(props: Object, filter: Object): boolean {
   return true;
 }
 
-var ReactTestRendererFiber = {
-  create(element: React$Element<any>, options: TestRendererOptions) {
-    var createNodeMock = defaultTestOptions.createNodeMock;
-    if (options && typeof options.createNodeMock === 'function') {
+function create(element: React$Element<any>, options: TestRendererOptions) {
+  let createNodeMock = defaultTestOptions.createNodeMock;
+  let isConcurrent = false;
+  if (typeof options === 'object' && options !== null) {
+    if (typeof options.createNodeMock === 'function') {
       createNodeMock = options.createNodeMock;
     }
-    var container = {
-      children: [],
-      createNodeMock,
-      tag: 'CONTAINER',
-    };
-    var root: FiberRoot | null = TestRenderer.createContainer(container, false);
-    invariant(root != null, 'something went wrong');
-    TestRenderer.updateContainer(element, root, null, null);
+    if (options.unstable_isConcurrent === true) {
+      isConcurrent = true;
+    }
+  }
+  let container = {
+    children: [],
+    createNodeMock,
+    tag: 'CONTAINER',
+  };
+  let root: FiberRoot | null = createContainer(
+    container,
+    isConcurrent ? ConcurrentRoot : LegacyRoot,
+    false,
+    null,
+  );
+  invariant(root != null, 'something went wrong');
+  updateContainer(element, root, null, null);
 
-    var entry = {
-      root: undefined, // makes flow happy
-      // we define a 'getter' for 'root' below using 'Object.defineProperty'
-      toJSON() {
-        if (root == null || root.current == null || container == null) {
-          return null;
-        }
-        if (container.children.length === 0) {
-          return null;
-        }
-        if (container.children.length === 1) {
-          return toJSON(container.children[0]);
-        }
-        return container.children.map(toJSON);
-      },
-      toTree() {
-        if (root == null || root.current == null) {
-          return null;
-        }
-        return toTree(root.current);
-      },
-      update(newElement: React$Element<any>) {
-        if (root == null || root.current == null) {
-          return;
-        }
-        TestRenderer.updateContainer(newElement, root, null, null);
-      },
-      unmount() {
-        if (root == null || root.current == null) {
-          return;
-        }
-        TestRenderer.updateContainer(null, root, null);
-        container = null;
-        root = null;
-      },
-      getInstance() {
-        if (root == null || root.current == null) {
-          return null;
-        }
-        return TestRenderer.getPublicRootInstance(root);
-      },
-    };
+  const entry = {
+    _Scheduler: Scheduler,
 
-    Object.defineProperty(
-      entry,
-      'root',
-      ({
-        configurable: true,
-        enumerable: true,
-        get: function() {
-          if (root === null || root.current.child === null) {
-            throw new Error("Can't access .root on unmounted test renderer");
+    root: undefined, // makes flow happy
+    // we define a 'getter' for 'root' below using 'Object.defineProperty'
+    toJSON(): Array<ReactTestRendererNode> | ReactTestRendererNode | null {
+      if (root == null || root.current == null || container == null) {
+        return null;
+      }
+      if (container.children.length === 0) {
+        return null;
+      }
+      if (container.children.length === 1) {
+        return toJSON(container.children[0]);
+      }
+      if (
+        container.children.length === 2 &&
+        container.children[0].isHidden === true &&
+        container.children[1].isHidden === false
+      ) {
+        // Omit timed out children from output entirely, including the fact that we
+        // temporarily wrap fallback and timed out children in an array.
+        return toJSON(container.children[1]);
+      }
+      let renderedChildren = null;
+      if (container.children && container.children.length) {
+        for (let i = 0; i < container.children.length; i++) {
+          const renderedChild = toJSON(container.children[i]);
+          if (renderedChild !== null) {
+            if (renderedChildren === null) {
+              renderedChildren = [renderedChild];
+            } else {
+              renderedChildren.push(renderedChild);
+            }
           }
-          return wrapFiber(root.current.child);
-        },
-      }: Object),
-    );
+        }
+      }
+      return renderedChildren;
+    },
+    toTree() {
+      if (root == null || root.current == null) {
+        return null;
+      }
+      return toTree(root.current);
+    },
+    update(newElement: React$Element<any>) {
+      if (root == null || root.current == null) {
+        return;
+      }
+      updateContainer(newElement, root, null, null);
+    },
+    unmount() {
+      if (root == null || root.current == null) {
+        return;
+      }
+      updateContainer(null, root, null, null);
+      container = null;
+      root = null;
+    },
+    getInstance() {
+      if (root == null || root.current == null) {
+        return null;
+      }
+      return getPublicRootInstance(root);
+    },
 
-    return entry;
-  },
+    unstable_flushSync<T>(fn: () => T): T {
+      return flushSync(fn);
+    },
+  };
 
-  /* eslint-disable camelcase */
-  unstable_batchedUpdates: batchedUpdates,
-  /* eslint-enable camelcase */
+  Object.defineProperty(
+    entry,
+    'root',
+    ({
+      configurable: true,
+      enumerable: true,
+      get: function() {
+        if (root === null) {
+          throw new Error("Can't access .root on unmounted test renderer");
+        }
+        const children = getChildren(root.current);
+        if (children.length === 0) {
+          throw new Error("Can't access .root on unmounted test renderer");
+        } else if (children.length === 1) {
+          // Normally, we skip the root and just give you the child.
+          return children[0];
+        } else {
+          // However, we give you the root if there's more than one root child.
+          // We could make this the behavior for all cases but it would be a breaking change.
+          return wrapFiber(root.current);
+        }
+      },
+    }: Object),
+  );
+
+  return entry;
+}
+
+const fiberToWrapper = new WeakMap();
+function wrapFiber(fiber: Fiber): ReactTestInstance {
+  let wrapper = fiberToWrapper.get(fiber);
+  if (wrapper === undefined && fiber.alternate !== null) {
+    wrapper = fiberToWrapper.get(fiber.alternate);
+  }
+  if (wrapper === undefined) {
+    wrapper = new ReactTestInstance(fiber);
+    fiberToWrapper.set(fiber, wrapper);
+  }
+  return wrapper;
+}
+
+// Enable ReactTestRenderer to be used to test DevTools integration.
+injectIntoDevTools({
+  findFiberByHostInstance: (() => {
+    throw new Error('TestRenderer does not support findFiberByHostInstance()');
+  }: any),
+  bundleType: __DEV__ ? 1 : 0,
+  version: ReactVersion,
+  rendererPackageName: 'react-test-renderer',
+});
+
+export {
+  Scheduler as _Scheduler,
+  create,
+  /* eslint-disable-next-line camelcase */
+  batchedUpdates as unstable_batchedUpdates,
+  act,
 };
-
-export default ReactTestRendererFiber;

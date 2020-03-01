@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -9,14 +9,14 @@
 
 'use strict';
 
-let createRenderer;
-let React;
-let ReactDOM;
-let ReactDOMServer;
-let ReactTestUtils;
+import ReactShallowRenderer from 'react-test-renderer/shallow';
+import * as React from 'react';
+import * as ReactDOM from 'react-dom';
+import * as ReactDOMServer from 'react-dom/server';
+import * as ReactTestUtils from 'react-dom/test-utils';
 
 function getTestDocument(markup) {
-  var doc = document.implementation.createHTMLDocument('');
+  const doc = document.implementation.createHTMLDocument('');
   doc.open();
   doc.write(
     markup ||
@@ -27,12 +27,12 @@ function getTestDocument(markup) {
 }
 
 describe('ReactTestUtils', () => {
-  beforeEach(() => {
-    createRenderer = require('react-test-renderer/shallow').createRenderer;
-    React = require('react');
-    ReactDOM = require('react-dom');
-    ReactDOMServer = require('react-dom/server');
-    ReactTestUtils = require('react-dom/test-utils');
+  it('Simulate should have locally attached media events', () => {
+    expect(Object.keys(ReactTestUtils.Simulate).sort()).toMatchSnapshot();
+  });
+
+  it('SimulateNative should have locally attached media events', () => {
+    expect(Object.keys(ReactTestUtils.SimulateNative).sort()).toMatchSnapshot();
   });
 
   it('gives Jest mocks a passthrough implementation with mockComponent()', () => {
@@ -45,9 +45,19 @@ describe('ReactTestUtils', () => {
     MockedComponent.prototype.render = jest.fn();
 
     // Patch it up so it returns its children.
+    expect(() =>
+      ReactTestUtils.mockComponent(MockedComponent),
+    ).toWarnDev(
+      'ReactTestUtils.mockComponent() is deprecated. ' +
+        'Use shallow rendering or jest.mock() instead.\n\n' +
+        'See https://fb.me/test-utils-mock-component for more information.',
+      {withoutStack: true},
+    );
+
+    // De-duplication check
     ReactTestUtils.mockComponent(MockedComponent);
 
-    var container = document.createElement('div');
+    const container = document.createElement('div');
     ReactDOM.render(<MockedComponent>Hello</MockedComponent>, container);
     expect(container.textContent).toBe('Hello');
   });
@@ -241,7 +251,7 @@ describe('ReactTestUtils', () => {
   });
 
   it('can scry with stateless components involved', () => {
-    const Stateless = () => (
+    const Function = () => (
       <div>
         <hr />
       </div>
@@ -251,7 +261,7 @@ describe('ReactTestUtils', () => {
       render() {
         return (
           <div>
-            <Stateless />
+            <Function />
             <hr />
           </div>
         );
@@ -263,6 +273,62 @@ describe('ReactTestUtils', () => {
     expect(hrs.length).toBe(2);
   });
 
+  it('provides a clear error when passing invalid objects to scry', () => {
+    // This is probably too relaxed but it's existing behavior.
+    ReactTestUtils.findAllInRenderedTree(null, 'span');
+    ReactTestUtils.findAllInRenderedTree(undefined, 'span');
+    ReactTestUtils.findAllInRenderedTree('', 'span');
+    ReactTestUtils.findAllInRenderedTree(0, 'span');
+    ReactTestUtils.findAllInRenderedTree(false, 'span');
+
+    expect(() => {
+      ReactTestUtils.findAllInRenderedTree([], 'span');
+    }).toThrow(
+      'findAllInRenderedTree(...): the first argument must be a React class instance. ' +
+        'Instead received: an array.',
+    );
+    expect(() => {
+      ReactTestUtils.scryRenderedDOMComponentsWithClass(10, 'button');
+    }).toThrow(
+      'scryRenderedDOMComponentsWithClass(...): the first argument must be a React class instance. ' +
+        'Instead received: 10.',
+    );
+    expect(() => {
+      ReactTestUtils.findRenderedDOMComponentWithClass('hello', 'button');
+    }).toThrow(
+      'findRenderedDOMComponentWithClass(...): the first argument must be a React class instance. ' +
+        'Instead received: hello.',
+    );
+    expect(() => {
+      ReactTestUtils.scryRenderedDOMComponentsWithTag(
+        {x: true, y: false},
+        'span',
+      );
+    }).toThrow(
+      'scryRenderedDOMComponentsWithTag(...): the first argument must be a React class instance. ' +
+        'Instead received: object with keys {x, y}.',
+    );
+    const div = document.createElement('div');
+    expect(() => {
+      ReactTestUtils.findRenderedDOMComponentWithTag(div, 'span');
+    }).toThrow(
+      'findRenderedDOMComponentWithTag(...): the first argument must be a React class instance. ' +
+        'Instead received: a DOM node.',
+    );
+    expect(() => {
+      ReactTestUtils.scryRenderedComponentsWithType(true, 'span');
+    }).toThrow(
+      'scryRenderedComponentsWithType(...): the first argument must be a React class instance. ' +
+        'Instead received: true.',
+    );
+    expect(() => {
+      ReactTestUtils.findRenderedComponentWithType(true, 'span');
+    }).toThrow(
+      'findRenderedComponentWithType(...): the first argument must be a React class instance. ' +
+        'Instead received: true.',
+    );
+  });
+
   describe('Simulate', () => {
     it('should change the value of an input field', () => {
       const obj = {
@@ -270,19 +336,18 @@ describe('ReactTestUtils', () => {
           e.persist();
         },
       };
-      spyOn(obj, 'handler').and.callThrough();
+      spyOnDevAndProd(obj, 'handler').and.callThrough();
       const container = document.createElement('div');
-      const instance = ReactDOM.render(
+      const node = ReactDOM.render(
         <input type="text" onChange={obj.handler} />,
         container,
       );
 
-      const node = ReactDOM.findDOMNode(instance);
       node.value = 'giraffe';
       ReactTestUtils.Simulate.change(node);
 
       expect(obj.handler).toHaveBeenCalledWith(
-        jasmine.objectContaining({target: node}),
+        expect.objectContaining({target: node}),
       );
     });
 
@@ -306,19 +371,19 @@ describe('ReactTestUtils', () => {
           e.persist();
         },
       };
-      spyOn(obj, 'handler').and.callThrough();
+      spyOnDevAndProd(obj, 'handler').and.callThrough();
       const container = document.createElement('div');
       const instance = ReactDOM.render(
         <SomeComponent handleChange={obj.handler} />,
         container,
       );
 
-      const node = ReactDOM.findDOMNode(instance.refs.input);
+      const node = instance.refs.input;
       node.value = 'zebra';
       ReactTestUtils.Simulate.change(node);
 
       expect(obj.handler).toHaveBeenCalledWith(
-        jasmine.objectContaining({target: node}),
+        expect.objectContaining({target: node}),
       );
     });
 
@@ -329,8 +394,8 @@ describe('ReactTestUtils', () => {
         }
       }
 
-      const handler = jasmine.createSpy('spy');
-      const shallowRenderer = createRenderer();
+      const handler = jest.fn().mockName('spy');
+      const shallowRenderer = ReactShallowRenderer.createRenderer();
       const result = shallowRenderer.render(
         <SomeComponent handleClick={handler} />,
       );
@@ -350,7 +415,7 @@ describe('ReactTestUtils', () => {
         }
       }
 
-      const handler = jasmine.createSpy('spy');
+      const handler = jest.fn().mockName('spy');
       const container = document.createElement('div');
       const instance = ReactDOM.render(
         <SomeComponent handleClick={handler} />,
@@ -365,8 +430,6 @@ describe('ReactTestUtils', () => {
     });
 
     it('should not warn when used with extra properties', () => {
-      spyOn(console, 'error');
-
       const CLIENT_X = 100;
 
       class Component extends React.Component {
@@ -384,12 +447,11 @@ describe('ReactTestUtils', () => {
       ReactTestUtils.Simulate.click(ReactDOM.findDOMNode(instance), {
         clientX: CLIENT_X,
       });
-      expectDev(console.error.calls.count()).toBe(0);
     });
 
     it('should set the type of the event', () => {
       let event;
-      const stub = jest.genMockFn().mockImplementation(e => {
+      const stub = jest.fn().mockImplementation(e => {
         e.persist();
         event = e;
       });
@@ -426,7 +488,7 @@ describe('ReactTestUtils', () => {
       ReactTestUtils.Simulate.change(input);
 
       expect(onChange).toHaveBeenCalledWith(
-        jasmine.objectContaining({target: input}),
+        expect.objectContaining({target: input}),
       );
     });
   });

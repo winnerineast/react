@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -9,28 +9,32 @@
 
 'use strict';
 
-var spawnSync = require('child_process').spawnSync;
-var path = require('path');
+const spawnSync = require('child_process').spawnSync;
 
 describe('ReactClassEquivalence', () => {
   it('tests the same thing for es6 classes and CoffeeScript', () => {
-    var result1 = runJest('ReactCoffeeScriptClass-test.coffee');
-    var result2 = runJest('ReactES6Class-test.js');
+    const result1 = runJest('ReactCoffeeScriptClass-test.coffee');
+    const result2 = runJest('ReactES6Class-test.js');
     compareResults(result1, result2);
   });
 
   it('tests the same thing for es6 classes and TypeScript', () => {
-    var result1 = runJest('ReactTypeScriptClass-test.ts');
-    var result2 = runJest('ReactES6Class-test.js');
+    const result1 = runJest('ReactTypeScriptClass-test.ts');
+    const result2 = runJest('ReactES6Class-test.js');
     compareResults(result1, result2);
   });
 });
 
 function runJest(testFile) {
-  var cwd = process.cwd();
-  var extension = process.platform === 'win32' ? '.cmd' : '';
-  var jestBin = path.resolve('node_modules', '.bin', 'jest' + extension);
-  var result = spawnSync(jestBin, [testFile], {
+  const cwd = process.cwd();
+  const extension = process.platform === 'win32' ? '.cmd' : '';
+  const command = process.env.npm_lifecycle_event;
+  if (!command.startsWith('test')) {
+    throw new Error(
+      'Expected this test to run as a result of one of test commands.',
+    );
+  }
+  const result = spawnSync('yarn' + extension, [command, testFile], {
     cwd,
     env: Object.assign({}, process.env, {
       REACT_CLASS_EQUIVALENCE_TEST: 'true',
@@ -57,9 +61,9 @@ function runJest(testFile) {
 }
 
 function compareResults(a, b) {
-  var regexp = /EQUIVALENCE.*$/gm;
-  var aSpecs = (a.match(regexp) || []).sort().join('\n');
-  var bSpecs = (b.match(regexp) || []).sort().join('\n');
+  const regexp = /EQUIVALENCE.*$/gm;
+  const aSpecs = (a.match(regexp) || []).sort().join('\n');
+  const bSpecs = (b.match(regexp) || []).sort().join('\n');
 
   if (aSpecs.length === 0 && bSpecs.length === 0) {
     throw new Error('No spec results found in the output');

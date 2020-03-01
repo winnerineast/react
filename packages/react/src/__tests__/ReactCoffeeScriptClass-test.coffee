@@ -1,5 +1,5 @@
 ###
-Copyright (c) 2015-present, Facebook, Inc.
+Copyright (c) Facebook, Inc. and its affiliates.
 
 This source code is licensed under the MIT license found in the
 LICENSE file in the root directory of this source tree.
@@ -10,10 +10,8 @@ ReactDOM = null
 PropTypes = null
 
 describe 'ReactCoffeeScriptClass', ->
-  div = null
-  span = null
   container = null
-  Inner = null
+  InnerComponent = null
   attachedListener = null;
   renderedName = null;
 
@@ -24,15 +22,12 @@ describe 'ReactCoffeeScriptClass', ->
     container = document.createElement 'div'
     attachedListener = null
     renderedName = null
-    div = React.createFactory 'div'
-    span = React.createFactory 'span'
-    class InnerComponent extends React.Component
+    InnerComponent = class extends React.Component
       getName: -> this.props.name
       render: ->
         attachedListener = this.props.onClick
         renderedName = this.props.name
-        return div className: this.props.name
-    Inner = React.createFactory InnerComponent
+        return React.createElement('div', className: this.props.name)
 
   test = (element, expectedTag, expectedClassName) ->
     instance = ReactDOM.render(element, container)
@@ -46,20 +41,24 @@ describe 'ReactCoffeeScriptClass', ->
     expect(Foo.name).toBe 'Foo'
 
   it 'throws if no render function is defined', ->
-    spyOn console, 'error'
     class Foo extends React.Component
     expect(->
-      ReactDOM.render React.createElement(Foo), container
-    ).toThrow()
-    expect(console.error.calls.count()).toBe(1)
-    expect(console.error.calls.argsFor(0)[0]).toContain('No `render` method found on the returned component instance')
+      expect(->
+        ReactDOM.render React.createElement(Foo), container
+      ).toThrow()
+    ).toErrorDev([
+      # A failed component renders twice in DEV
+      'No `render` method found on the returned component instance',
+      'No `render` method found on the returned component instance',
+    ])
     undefined
 
   it 'renders a simple stateless component with prop', ->
     class Foo extends React.Component
       render: ->
-        Inner
+        React.createElement(InnerComponent,
           name: @props.bar
+        )
 
     test React.createElement(Foo, bar: 'foo'), 'DIV', 'foo'
     test React.createElement(Foo, bar: 'bar'), 'DIV', 'bar'
@@ -72,8 +71,9 @@ describe 'ReactCoffeeScriptClass', ->
         @state = bar: @props.initialValue
 
       render: ->
-        span
+        React.createElement('span',
           className: @state.bar
+        )
 
     test React.createElement(Foo, initialValue: 'foo'), 'SPAN', 'foo'
     undefined
@@ -88,15 +88,125 @@ describe 'ReactCoffeeScriptClass', ->
 
       render: ->
         if @state.bar is 'foo'
-          return div(
+          return React.createElement('div',
             className: 'foo'
           )
-        span
+        React.createElement('span',
           className: @state.bar
+        )
 
     instance = test React.createElement(Foo, initialValue: 'foo'), 'DIV', 'foo'
     instance.changeState()
     test React.createElement(Foo), 'SPAN', 'bar'
+    undefined
+
+  it 'sets initial state with value returned by static getDerivedStateFromProps', ->
+    class Foo extends React.Component
+      constructor: (props) ->
+        super props
+        @state = foo: null
+      render: ->
+        React.createElement('div',
+          className: "#{@state.foo} #{@state.bar}"
+        )
+    Foo.getDerivedStateFromProps = (nextProps, prevState) ->
+      {
+        foo: nextProps.foo
+        bar: 'bar'
+      }
+    test React.createElement(Foo, foo: 'foo'), 'DIV', 'foo bar'
+    undefined
+
+  it 'warns if getDerivedStateFromProps is not static', ->
+    class Foo extends React.Component
+      render: ->
+        React.createElement('div')
+      getDerivedStateFromProps: ->
+        {}
+    expect(->
+      ReactDOM.render(React.createElement(Foo, foo: 'foo'), container)
+    ).toErrorDev 'Foo: getDerivedStateFromProps() is defined as an instance method and will be ignored. Instead, declare it as a static method.'
+    undefined
+
+  it 'warns if getDerivedStateFromError is not static', ->
+    class Foo extends React.Component
+      render: ->
+        React.createElement('div')
+      getDerivedStateFromError: ->
+        {}
+    expect(->
+      ReactDOM.render(React.createElement(Foo, foo: 'foo'), container)
+    ).toErrorDev 'Foo: getDerivedStateFromError() is defined as an instance method and will be ignored. Instead, declare it as a static method.'
+    undefined
+
+  it 'warns if getSnapshotBeforeUpdate is static', ->
+    class Foo extends React.Component
+      render: ->
+        React.createElement('div')
+    Foo.getSnapshotBeforeUpdate = () ->
+      {}
+    expect(->
+      ReactDOM.render(React.createElement(Foo, foo: 'foo'), container)
+    ).toErrorDev 'Foo: getSnapshotBeforeUpdate() is defined as a static method and will be ignored. Instead, declare it as an instance method.'
+    undefined
+
+  it 'warns if state not initialized before static getDerivedStateFromProps', ->
+    class Foo extends React.Component
+      render: ->
+        React.createElement('div',
+          className: "#{@state.foo} #{@state.bar}"
+        )
+    Foo.getDerivedStateFromProps = (nextProps, prevState) ->
+      {
+        foo: nextProps.foo
+        bar: 'bar'
+      }
+    expect(->
+      ReactDOM.render(React.createElement(Foo, foo: 'foo'), container)
+    ).toErrorDev (
+      '`Foo` uses `getDerivedStateFromProps` but its initial state is ' +
+      'undefined. This is not recommended. Instead, define the initial state by ' +
+      'assigning an object to `this.state` in the constructor of `Foo`. ' +
+      'This ensures that `getDerivedStateFromProps` arguments have a consistent shape.'
+    )
+    undefined
+
+  it 'updates initial state with values returned by static getDerivedStateFromProps', ->
+    class Foo extends React.Component
+      constructor: (props, context) ->
+        super props, context
+        @state =
+          foo: 'foo'
+          bar: 'bar'
+      render: ->
+        React.createElement('div',
+          className: "#{@state.foo} #{@state.bar}"
+        )
+    Foo.getDerivedStateFromProps = (nextProps, prevState) ->
+      {
+        foo: "not-#{prevState.foo}"
+      }
+    test React.createElement(Foo), 'DIV', 'not-foo bar'
+    undefined
+
+  it 'renders updated state with values returned by static getDerivedStateFromProps', ->
+    class Foo extends React.Component
+      constructor: (props, context) ->
+        super props, context
+        @state =
+          value: 'initial'
+      render: ->
+        React.createElement('div',
+          className: @state.value
+        )
+    Foo.getDerivedStateFromProps = (nextProps, prevState) ->
+      if nextProps.update
+        return {
+          value: 'updated'
+        }
+      return null
+    test React.createElement(Foo, update: false), 'DIV', 'initial'
+    test React.createElement(Foo, update: true), 'DIV', 'updated'
     undefined
 
   it 'renders based on context in the constructor', ->
@@ -137,31 +247,29 @@ describe 'ReactCoffeeScriptClass', ->
       constructor: (props) ->
         @state = bar: props.initialValue
 
-      componentWillMount: ->
+      UNSAFE_componentWillMount: ->
         @setState bar: 'bar'
 
       render: ->
         renderCount++
-        span className: @state.bar
+        React.createElement('span', className: @state.bar)
 
     test React.createElement(Foo, initialValue: 'foo'), 'SPAN', 'bar'
     expect(renderCount).toBe 1
     undefined
 
-  it 'should throw with non-object in the initial state property', ->
+  it 'should warn with non-object in the initial state property', ->
     [['an array'], 'a string', 1234].forEach (state) ->
       class Foo extends React.Component
         constructor: ->
           @state = state
 
         render: ->
-          span()
+          React.createElement('span')
 
       expect(->
-        test React.createElement(Foo), 'span', ''
-      ).toThrowError(
-        'Foo.state: must be set to an object or null'
-      )
+        test React.createElement(Foo), 'SPAN', ''
+      ).toErrorDev('Foo.state: must be set to an object or null')
     undefined
 
   it 'should render with null in the initial state property', ->
@@ -170,7 +278,7 @@ describe 'ReactCoffeeScriptClass', ->
         @state = null
 
       render: ->
-        span()
+        React.createElement('span')
 
     test React.createElement(Foo), 'SPAN', ''
     undefined
@@ -184,9 +292,10 @@ describe 'ReactCoffeeScriptClass', ->
         @setState bar: 'bar'
 
       render: ->
-        Inner
+        React.createElement(InnerComponent,
           name: @state.bar
           onClick: @handleClick
+        )
 
     test React.createElement(Foo, initialValue: 'foo'), 'DIV', 'foo'
     attachedListener()
@@ -202,9 +311,10 @@ describe 'ReactCoffeeScriptClass', ->
         @setState bar: 'bar'
 
       render: ->
-        Inner
+        React.createElement(InnerComponent,
           name: @state.bar
           onClick: @handleClick
+        )
 
     test React.createElement(Foo, initialValue: 'foo'), 'DIV', 'foo'
     expect(attachedListener).toThrow()
@@ -220,9 +330,10 @@ describe 'ReactCoffeeScriptClass', ->
         @forceUpdate()
 
       render: ->
-        Inner
+        React.createElement(InnerComponent,
           name: @mutativeValue
           onClick: @handleClick
+        )
 
     test React.createElement(Foo, initialValue: 'foo'), 'DIV', 'foo'
     attachedListener()
@@ -235,20 +346,20 @@ describe 'ReactCoffeeScriptClass', ->
       constructor: ->
         @state = {}
 
-      componentWillMount: ->
+      UNSAFE_componentWillMount: ->
         lifeCycles.push 'will-mount'
 
       componentDidMount: ->
         lifeCycles.push 'did-mount'
 
-      componentWillReceiveProps: (nextProps) ->
+      UNSAFE_componentWillReceiveProps: (nextProps) ->
         lifeCycles.push 'receive-props', nextProps
 
       shouldComponentUpdate: (nextProps, nextState) ->
         lifeCycles.push 'should-update', nextProps, nextState
         true
 
-      componentWillUpdate: (nextProps, nextState) ->
+      UNSAFE_componentWillUpdate: (nextProps, nextState) ->
         lifeCycles.push 'will-update', nextProps, nextState
 
       componentDidUpdate: (prevProps, prevState) ->
@@ -258,8 +369,9 @@ describe 'ReactCoffeeScriptClass', ->
         lifeCycles.push 'will-unmount'
 
       render: ->
-        span
+        React.createElement('span',
           className: @props.value
+        )
 
     test React.createElement(Foo, value: 'foo'), 'SPAN', 'foo'
     expect(lifeCycles).toEqual [
@@ -281,12 +393,12 @@ describe 'ReactCoffeeScriptClass', ->
 
   it 'warns when classic properties are defined on the instance,
       but does not invoke them.', ->
-    spyOn console, 'error'
     getInitialStateWasCalled = false
     getDefaultPropsWasCalled = false
     class Foo extends React.Component
       constructor: ->
         @contextTypes = {}
+        @contextType = {}
         @propTypes = {}
 
       getInitialState: ->
@@ -298,30 +410,25 @@ describe 'ReactCoffeeScriptClass', ->
         {}
 
       render: ->
-        span
+        React.createElement('span',
           className: 'foo'
+        )
 
-    test React.createElement(Foo), 'SPAN', 'foo'
+    expect(->
+      test React.createElement(Foo), 'SPAN', 'foo'
+    ).toErrorDev([
+      'getInitialState was defined on Foo, a plain JavaScript class.',
+      'getDefaultProps was defined on Foo, a plain JavaScript class.',
+      'propTypes was defined as an instance property on Foo.',
+      'contextTypes was defined as an instance property on Foo.',
+      'contextType was defined as an instance property on Foo.',
+    ])
     expect(getInitialStateWasCalled).toBe false
     expect(getDefaultPropsWasCalled).toBe false
-    expect(console.error.calls.count()).toBe 4
-    expect(console.error.calls.argsFor(0)[0]).toContain(
-      'getInitialState was defined on Foo, a plain JavaScript class.'
-    )
-    expect(console.error.calls.argsFor(1)[0]).toContain(
-      'getDefaultProps was defined on Foo, a plain JavaScript class.'
-    )
-    expect(console.error.calls.argsFor(2)[0]).toContain(
-      'propTypes was defined as an instance property on Foo.'
-    )
-    expect(console.error.calls.argsFor(3)[0]).toContain(
-      'contextTypes was defined as an instance property on Foo.'
-    )
     undefined
 
   it 'does not warn about getInitialState() on class components
       if state is also defined.', ->
-    spyOn console, 'error'
     class Foo extends React.Component
       constructor: (props) ->
         super props
@@ -331,26 +438,26 @@ describe 'ReactCoffeeScriptClass', ->
         {}
 
       render: ->
-        span
+        React.createElement('span',
           className: 'foo'
+        )
 
     test React.createElement(Foo), 'SPAN', 'foo'
-    expect(console.error.calls.count()).toBe 0
     undefined
 
   it 'should warn when misspelling shouldComponentUpdate', ->
-    spyOn console, 'error'
     class NamedComponent extends React.Component
       componentShouldUpdate: ->
         false
 
       render: ->
-        span
+        React.createElement('span',
           className: 'foo'
+        )
 
-    test React.createElement(NamedComponent), 'SPAN', 'foo'
-    expect(console.error.calls.count()).toBe 1
-    expect(console.error.calls.argsFor(0)[0]).toBe(
+    expect(->
+      test React.createElement(NamedComponent), 'SPAN', 'foo'
+    ).toErrorDev(
       'Warning: NamedComponent has a method called componentShouldUpdate().
        Did you mean shouldComponentUpdate()? The name is phrased as a
        question because the function is expected to return a value.'
@@ -358,35 +465,55 @@ describe 'ReactCoffeeScriptClass', ->
     undefined
 
   it 'should warn when misspelling componentWillReceiveProps', ->
-    spyOn console, 'error'
     class NamedComponent extends React.Component
       componentWillRecieveProps: ->
         false
 
       render: ->
-        span
+        React.createElement('span',
           className: 'foo'
+        )
 
-    test React.createElement(NamedComponent), 'SPAN', 'foo'
-    expect(console.error.calls.count()).toBe 1
-    expect(console.error.calls.argsFor(0)[0]).toBe(
+    expect(->
+      test React.createElement(NamedComponent), 'SPAN', 'foo'
+    ).toErrorDev(
       'Warning: NamedComponent has a method called componentWillRecieveProps().
        Did you mean componentWillReceiveProps()?'
     )
     undefined
 
-  it 'should throw AND warn when trying to access classic APIs', ->
-    spyOn console, 'warn'
-    instance =
-      test Inner(name: 'foo'), 'DIV', 'foo'
-    expect(-> instance.replaceState {}).toThrow()
-    expect(-> instance.isMounted()).toThrow()
-    expect(console.warn.calls.count()).toBe 2
-    expect(console.warn.calls.argsFor(0)[0]).toContain(
-      'replaceState(...) is deprecated in plain JavaScript React classes'
+  it 'should warn when misspelling UNSAFE_componentWillReceiveProps', ->
+    class NamedComponent extends React.Component
+      UNSAFE_componentWillRecieveProps: ->
+        false
+
+      render: ->
+        React.createElement('span',
+          className: 'foo'
+        )
+
+    expect(->
+      test React.createElement(NamedComponent), 'SPAN', 'foo'
+    ).toErrorDev(
+      'Warning: NamedComponent has a method called UNSAFE_componentWillRecieveProps().
+       Did you mean UNSAFE_componentWillReceiveProps()?'
     )
-    expect(console.warn.calls.argsFor(1)[0]).toContain(
-      'isMounted(...) is deprecated in plain JavaScript React classes'
+    undefined
+
+  it 'should throw AND warn when trying to access classic APIs', ->
+    instance =
+      test React.createElement(InnerComponent, name: 'foo'), 'DIV', 'foo'
+    expect(->
+      expect(-> instance.replaceState {}).toThrow()
+    ).toWarnDev(
+      'replaceState(...) is deprecated in plain JavaScript React classes',
+      {withoutStack: true}
+    )
+    expect(->
+      expect(-> instance.isMounted()).toThrow()
+    ).toWarnDev(
+      'isMounted(...) is deprecated in plain JavaScript React classes',
+      {withoutStack: true}
     )
     undefined
 
@@ -395,7 +522,7 @@ describe 'ReactCoffeeScriptClass', ->
       @contextTypes:
         bar: PropTypes.string
       render: ->
-        div className: @context.bar
+        React.createElement('div', className: @context.bar)
 
     class Foo extends React.Component
       @childContextTypes:
@@ -411,16 +538,18 @@ describe 'ReactCoffeeScriptClass', ->
   it 'supports classic refs', ->
     class Foo extends React.Component
       render: ->
-        Inner
+        React.createElement(InnerComponent,
           name: 'foo'
           ref: 'inner'
+        )
 
     instance = test(React.createElement(Foo), 'DIV', 'foo')
     expect(instance.refs.inner.getName()).toBe 'foo'
     undefined
 
   it 'supports drilling through to the DOM using findDOMNode', ->
-    instance = test Inner(name: 'foo'), 'DIV', 'foo'
+    instance = test React.createElement(InnerComponent, name: 'foo'), 'DIV', 'foo'
     node = ReactDOM.findDOMNode(instance)
     expect(node).toBe container.firstChild
     undefined
+  undefined

@@ -1,88 +1,76 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-import warning from 'fbjs/lib/warning';
-import {ReactDebugCurrentFrame} from 'shared/ReactGlobalSharedState';
-
 import {ATTRIBUTE_NAME_CHAR} from './DOMProperty';
 import isCustomComponent from './isCustomComponent';
 import validAriaProperties from './validAriaProperties';
 
-var warnedProperties = {};
-var rARIA = new RegExp('^(aria)-[' + ATTRIBUTE_NAME_CHAR + ']*$');
-var rARIACamel = new RegExp('^(aria)[A-Z][' + ATTRIBUTE_NAME_CHAR + ']*$');
+const warnedProperties = {};
+const rARIA = new RegExp('^(aria)-[' + ATTRIBUTE_NAME_CHAR + ']*$');
+const rARIACamel = new RegExp('^(aria)[A-Z][' + ATTRIBUTE_NAME_CHAR + ']*$');
 
-var hasOwnProperty = Object.prototype.hasOwnProperty;
-
-function getStackAddendum() {
-  var stack = ReactDebugCurrentFrame.getStackAddendum();
-  return stack != null ? stack : '';
-}
+const hasOwnProperty = Object.prototype.hasOwnProperty;
 
 function validateProperty(tagName, name) {
-  if (hasOwnProperty.call(warnedProperties, name) && warnedProperties[name]) {
-    return true;
-  }
-
-  if (rARIACamel.test(name)) {
-    var ariaName = 'aria-' + name.slice(4).toLowerCase();
-    var correctName = validAriaProperties.hasOwnProperty(ariaName)
-      ? ariaName
-      : null;
-
-    // If this is an aria-* attribute, but is not listed in the known DOM
-    // DOM properties, then it is an invalid aria-* attribute.
-    if (correctName == null) {
-      warning(
-        false,
-        'Invalid ARIA attribute `%s`. ARIA attributes follow the pattern aria-* and must be lowercase.%s',
-        name,
-        getStackAddendum(),
-      );
-      warnedProperties[name] = true;
+  if (__DEV__) {
+    if (hasOwnProperty.call(warnedProperties, name) && warnedProperties[name]) {
       return true;
     }
-    // aria-* attributes should be lowercase; suggest the lowercase version.
-    if (name !== correctName) {
-      warning(
-        false,
-        'Invalid ARIA attribute `%s`. Did you mean `%s`?%s',
-        name,
-        correctName,
-        getStackAddendum(),
-      );
-      warnedProperties[name] = true;
-      return true;
-    }
-  }
 
-  if (rARIA.test(name)) {
-    var lowerCasedName = name.toLowerCase();
-    var standardName = validAriaProperties.hasOwnProperty(lowerCasedName)
-      ? lowerCasedName
-      : null;
+    if (rARIACamel.test(name)) {
+      const ariaName = 'aria-' + name.slice(4).toLowerCase();
+      const correctName = validAriaProperties.hasOwnProperty(ariaName)
+        ? ariaName
+        : null;
 
-    // If this is an aria-* attribute, but is not listed in the known DOM
-    // DOM properties, then it is an invalid aria-* attribute.
-    if (standardName == null) {
-      warnedProperties[name] = true;
-      return false;
+      // If this is an aria-* attribute, but is not listed in the known DOM
+      // DOM properties, then it is an invalid aria-* attribute.
+      if (correctName == null) {
+        console.error(
+          'Invalid ARIA attribute `%s`. ARIA attributes follow the pattern aria-* and must be lowercase.',
+          name,
+        );
+        warnedProperties[name] = true;
+        return true;
+      }
+      // aria-* attributes should be lowercase; suggest the lowercase version.
+      if (name !== correctName) {
+        console.error(
+          'Invalid ARIA attribute `%s`. Did you mean `%s`?',
+          name,
+          correctName,
+        );
+        warnedProperties[name] = true;
+        return true;
+      }
     }
-    // aria-* attributes should be lowercase; suggest the lowercase version.
-    if (name !== standardName) {
-      warning(
-        false,
-        'Unknown ARIA attribute `%s`. Did you mean `%s`?%s',
-        name,
-        standardName,
-        getStackAddendum(),
-      );
-      warnedProperties[name] = true;
-      return true;
+
+    if (rARIA.test(name)) {
+      const lowerCasedName = name.toLowerCase();
+      const standardName = validAriaProperties.hasOwnProperty(lowerCasedName)
+        ? lowerCasedName
+        : null;
+
+      // If this is an aria-* attribute, but is not listed in the known DOM
+      // DOM properties, then it is an invalid aria-* attribute.
+      if (standardName == null) {
+        warnedProperties[name] = true;
+        return false;
+      }
+      // aria-* attributes should be lowercase; suggest the lowercase version.
+      if (name !== standardName) {
+        console.error(
+          'Unknown ARIA attribute `%s`. Did you mean `%s`?',
+          name,
+          standardName,
+        );
+        warnedProperties[name] = true;
+        return true;
+      }
     }
   }
 
@@ -90,37 +78,35 @@ function validateProperty(tagName, name) {
 }
 
 function warnInvalidARIAProps(type, props) {
-  const invalidProps = [];
+  if (__DEV__) {
+    const invalidProps = [];
 
-  for (var key in props) {
-    var isValid = validateProperty(type, key);
-    if (!isValid) {
-      invalidProps.push(key);
+    for (const key in props) {
+      const isValid = validateProperty(type, key);
+      if (!isValid) {
+        invalidProps.push(key);
+      }
     }
-  }
 
-  const unknownPropString = invalidProps
-    .map(prop => '`' + prop + '`')
-    .join(', ');
+    const unknownPropString = invalidProps
+      .map(prop => '`' + prop + '`')
+      .join(', ');
 
-  if (invalidProps.length === 1) {
-    warning(
-      false,
-      'Invalid aria prop %s on <%s> tag. ' +
-        'For details, see https://fb.me/invalid-aria-prop%s',
-      unknownPropString,
-      type,
-      getStackAddendum(),
-    );
-  } else if (invalidProps.length > 1) {
-    warning(
-      false,
-      'Invalid aria props %s on <%s> tag. ' +
-        'For details, see https://fb.me/invalid-aria-prop%s',
-      unknownPropString,
-      type,
-      getStackAddendum(),
-    );
+    if (invalidProps.length === 1) {
+      console.error(
+        'Invalid aria prop %s on <%s> tag. ' +
+          'For details, see https://fb.me/invalid-aria-prop',
+        unknownPropString,
+        type,
+      );
+    } else if (invalidProps.length > 1) {
+      console.error(
+        'Invalid aria props %s on <%s> tag. ' +
+          'For details, see https://fb.me/invalid-aria-prop',
+        unknownPropString,
+        type,
+      );
+    }
   }
 }
 

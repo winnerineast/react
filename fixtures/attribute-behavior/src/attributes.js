@@ -449,6 +449,11 @@ const attributes = [
   },
   {name: 'disabled', tagName: 'input'},
   {
+    name: 'disablePictureInPicture',
+    tagName: 'video',
+    read: getProperty('disablepictureinpicture'),
+  },
+  {
     name: 'display',
     tagName: 'svg',
     overrideStringValue: 'list-item',
@@ -1222,6 +1227,7 @@ const attributes = [
     tagName: 'color-profile',
     read: getSVGAttribute('color-profile'),
   },
+  {name: 'noModule', tagName: 'script'},
   {name: 'nonce', read: getAttribute('nonce')},
   {name: 'noValidate', tagName: 'form'},
   {

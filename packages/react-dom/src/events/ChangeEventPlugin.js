@@ -1,44 +1,56 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-import {enqueueEvents, processEventQueue} from 'events/EventPluginHub';
-import {accumulateTwoPhaseDispatches} from 'events/EventPropagators';
-import {enqueueStateRestore} from 'events/ReactControlledComponent';
-import {batchedUpdates} from 'events/ReactGenericBatching';
-import SyntheticEvent from 'events/SyntheticEvent';
+import {runEventsInBatch} from 'legacy-events/EventBatching';
+import {accumulateTwoPhaseDispatches} from 'legacy-events/EventPropagators';
+import {enqueueStateRestore} from 'legacy-events/ReactControlledComponent';
+import {batchedUpdates} from 'legacy-events/ReactGenericBatching';
+import SyntheticEvent from 'legacy-events/SyntheticEvent';
 import isTextInputElement from 'shared/isTextInputElement';
-import ExecutionEnvironment from 'fbjs/lib/ExecutionEnvironment';
+import {canUseDOM} from 'shared/ExecutionEnvironment';
 
+import {
+  TOP_BLUR,
+  TOP_CHANGE,
+  TOP_CLICK,
+  TOP_FOCUS,
+  TOP_INPUT,
+  TOP_KEY_DOWN,
+  TOP_KEY_UP,
+  TOP_SELECTION_CHANGE,
+} from './DOMTopLevelEventTypes';
 import getEventTarget from './getEventTarget';
 import isEventSupported from './isEventSupported';
 import {getNodeFromInstance} from '../client/ReactDOMComponentTree';
-import * as inputValueTracking from '../client/inputValueTracking';
+import {updateValueIfChanged} from '../client/inputValueTracking';
+import {setDefaultValue} from '../client/ReactDOMInput';
+import {disableInputAttributeSyncing} from 'shared/ReactFeatureFlags';
 
-var eventTypes = {
+const eventTypes = {
   change: {
     phasedRegistrationNames: {
       bubbled: 'onChange',
       captured: 'onChangeCapture',
     },
     dependencies: [
-      'topBlur',
-      'topChange',
-      'topClick',
-      'topFocus',
-      'topInput',
-      'topKeyDown',
-      'topKeyUp',
-      'topSelectionChange',
+      TOP_BLUR,
+      TOP_CHANGE,
+      TOP_CLICK,
+      TOP_FOCUS,
+      TOP_INPUT,
+      TOP_KEY_DOWN,
+      TOP_KEY_UP,
+      TOP_SELECTION_CHANGE,
     ],
   },
 };
 
 function createAndAccumulateChangeEvent(inst, nativeEvent, target) {
-  var event = SyntheticEvent.getPooled(
+  const event = SyntheticEvent.getPooled(
     eventTypes.change,
     inst,
     nativeEvent,
@@ -53,21 +65,21 @@ function createAndAccumulateChangeEvent(inst, nativeEvent, target) {
 /**
  * For IE shims
  */
-var activeElement = null;
-var activeElementInst = null;
+let activeElement = null;
+let activeElementInst = null;
 
 /**
  * SECTION: handle `change` event
  */
 function shouldUseChangeEvent(elem) {
-  var nodeName = elem.nodeName && elem.nodeName.toLowerCase();
+  const nodeName = elem.nodeName && elem.nodeName.toLowerCase();
   return (
     nodeName === 'select' || (nodeName === 'input' && elem.type === 'file')
   );
 }
 
 function manualDispatchChangeEvent(nativeEvent) {
-  var event = createAndAccumulateChangeEvent(
+  const event = createAndAccumulateChangeEvent(
     activeElementInst,
     nativeEvent,
     getEventTarget(nativeEvent),
@@ -88,19 +100,18 @@ function manualDispatchChangeEvent(nativeEvent) {
 }
 
 function runEventInBatch(event) {
-  enqueueEvents(event);
-  processEventQueue(false);
+  runEventsInBatch(event);
 }
 
 function getInstIfValueChanged(targetInst) {
   const targetNode = getNodeFromInstance(targetInst);
-  if (inputValueTracking.updateValueIfChanged(targetNode)) {
+  if (updateValueIfChanged(targetNode)) {
     return targetInst;
   }
 }
 
 function getTargetInstForChangeEvent(topLevelType, targetInst) {
-  if (topLevelType === 'topChange') {
+  if (topLevelType === TOP_CHANGE) {
     return targetInst;
   }
 }
@@ -108,8 +119,8 @@ function getTargetInstForChangeEvent(topLevelType, targetInst) {
 /**
  * SECTION: handle `input` event
  */
-var isInputEventSupported = false;
-if (ExecutionEnvironment.canUseDOM) {
+let isInputEventSupported = false;
+if (canUseDOM) {
   // IE9 claims to support the input event but fails to trigger it when
   // deleting text, so we ignore its input events.
   isInputEventSupported =
@@ -155,7 +166,7 @@ function handlePropertyChange(nativeEvent) {
 }
 
 function handleEventsForInputEventPolyfill(topLevelType, target, targetInst) {
-  if (topLevelType === 'topFocus') {
+  if (topLevelType === TOP_FOCUS) {
     // In IE9, propertychange fires for most input events but is buggy and
     // doesn't fire when text is deleted, but conveniently, selectionchange
     // appears to fire in all of the remaining cases so we catch those and
@@ -168,7 +179,7 @@ function handleEventsForInputEventPolyfill(topLevelType, target, targetInst) {
     // missed a blur event somehow.
     stopWatchingForValueChange();
     startWatchingForValueChange(target, targetInst);
-  } else if (topLevelType === 'topBlur') {
+  } else if (topLevelType === TOP_BLUR) {
     stopWatchingForValueChange();
   }
 }
@@ -176,9 +187,9 @@ function handleEventsForInputEventPolyfill(topLevelType, target, targetInst) {
 // For IE8 and IE9.
 function getTargetInstForInputEventPolyfill(topLevelType, targetInst) {
   if (
-    topLevelType === 'topSelectionChange' ||
-    topLevelType === 'topKeyUp' ||
-    topLevelType === 'topKeyDown'
+    topLevelType === TOP_SELECTION_CHANGE ||
+    topLevelType === TOP_KEY_UP ||
+    topLevelType === TOP_KEY_DOWN
   ) {
     // On the selectionchange event, the target is just document which isn't
     // helpful for us so just check activeElement instead.
@@ -201,7 +212,7 @@ function shouldUseClickEvent(elem) {
   // Use the `click` event to detect changes to checkbox and radio inputs.
   // This approach works across all browsers, whereas `change` does not fire
   // until `blur` in IE8.
-  var nodeName = elem.nodeName;
+  const nodeName = elem.nodeName;
   return (
     nodeName &&
     nodeName.toLowerCase() === 'input' &&
@@ -210,34 +221,27 @@ function shouldUseClickEvent(elem) {
 }
 
 function getTargetInstForClickEvent(topLevelType, targetInst) {
-  if (topLevelType === 'topClick') {
+  if (topLevelType === TOP_CLICK) {
     return getInstIfValueChanged(targetInst);
   }
 }
 
 function getTargetInstForInputOrChangeEvent(topLevelType, targetInst) {
-  if (topLevelType === 'topInput' || topLevelType === 'topChange') {
+  if (topLevelType === TOP_INPUT || topLevelType === TOP_CHANGE) {
     return getInstIfValueChanged(targetInst);
   }
 }
 
-function handleControlledInputBlur(inst, node) {
-  // TODO: In IE, inst is occasionally null. Why?
-  if (inst == null) {
-    return;
-  }
-
-  // Fiber and ReactDOM keep wrapper state in separate places
-  let state = inst._wrapperState || node._wrapperState;
+function handleControlledInputBlur(node) {
+  let state = node._wrapperState;
 
   if (!state || !state.controlled || node.type !== 'number') {
     return;
   }
 
-  // If controlled, assign the value attribute to the current value on blur
-  let value = '' + node.value;
-  if (node.getAttribute('value') !== value) {
-    node.setAttribute('value', value);
+  if (!disableInputAttributeSyncing) {
+    // If controlled, assign the value attribute to the current value on blur
+    setDefaultValue(node, 'number', node.value);
   }
 }
 
@@ -251,7 +255,7 @@ function handleControlledInputBlur(inst, node) {
  * - textarea
  * - select
  */
-var ChangeEventPlugin = {
+const ChangeEventPlugin = {
   eventTypes: eventTypes,
 
   _isInputEventSupported: isInputEventSupported,
@@ -261,10 +265,11 @@ var ChangeEventPlugin = {
     targetInst,
     nativeEvent,
     nativeEventTarget,
+    eventSystemFlags,
   ) {
-    var targetNode = targetInst ? getNodeFromInstance(targetInst) : window;
+    const targetNode = targetInst ? getNodeFromInstance(targetInst) : window;
 
-    var getTargetInstFunc, handleEventFunc;
+    let getTargetInstFunc, handleEventFunc;
     if (shouldUseChangeEvent(targetNode)) {
       getTargetInstFunc = getTargetInstForChangeEvent;
     } else if (isTextInputElement(targetNode)) {
@@ -279,9 +284,9 @@ var ChangeEventPlugin = {
     }
 
     if (getTargetInstFunc) {
-      var inst = getTargetInstFunc(topLevelType, targetInst);
+      const inst = getTargetInstFunc(topLevelType, targetInst);
       if (inst) {
-        var event = createAndAccumulateChangeEvent(
+        const event = createAndAccumulateChangeEvent(
           inst,
           nativeEvent,
           nativeEventTarget,
@@ -295,8 +300,8 @@ var ChangeEventPlugin = {
     }
 
     // When blurring, set the value attribute for number inputs
-    if (topLevelType === 'topBlur') {
-      handleControlledInputBlur(targetInst, targetNode);
+    if (topLevelType === TOP_BLUR) {
+      handleControlledInputBlur(targetNode);
     }
   },
 };

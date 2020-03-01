@@ -1,11 +1,11 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-import ExecutionEnvironment from 'fbjs/lib/ExecutionEnvironment';
+import {canUseDOM} from 'shared/ExecutionEnvironment';
 
 /**
  * Generate a mapping of standard vendor prefixes using the defined style property and event name.
@@ -15,13 +15,11 @@ import ExecutionEnvironment from 'fbjs/lib/ExecutionEnvironment';
  * @returns {object}
  */
 function makePrefixMap(styleProp, eventName) {
-  var prefixes = {};
+  const prefixes = {};
 
   prefixes[styleProp.toLowerCase()] = eventName.toLowerCase();
   prefixes['Webkit' + styleProp] = 'webkit' + eventName;
   prefixes['Moz' + styleProp] = 'moz' + eventName;
-  prefixes['ms' + styleProp] = 'MS' + eventName;
-  prefixes['O' + styleProp] = 'o' + eventName.toLowerCase();
 
   return prefixes;
 }
@@ -29,7 +27,7 @@ function makePrefixMap(styleProp, eventName) {
 /**
  * A list of event names to a configurable list of vendor prefixes.
  */
-var vendorPrefixes = {
+const vendorPrefixes = {
   animationend: makePrefixMap('Animation', 'AnimationEnd'),
   animationiteration: makePrefixMap('Animation', 'AnimationIteration'),
   animationstart: makePrefixMap('Animation', 'AnimationStart'),
@@ -39,17 +37,17 @@ var vendorPrefixes = {
 /**
  * Event names that have already been detected and prefixed (if applicable).
  */
-var prefixedEventNames = {};
+const prefixedEventNames = {};
 
 /**
  * Element to check for prefixes on.
  */
-var style = {};
+let style = {};
 
 /**
  * Bootstrap if a DOM exists.
  */
-if (ExecutionEnvironment.canUseDOM) {
+if (canUseDOM) {
   style = document.createElement('div').style;
 
   // On some platforms, in particular some releases of Android 4.x,
@@ -81,15 +79,15 @@ function getVendorPrefixedEventName(eventName) {
     return eventName;
   }
 
-  var prefixMap = vendorPrefixes[eventName];
+  const prefixMap = vendorPrefixes[eventName];
 
-  for (var styleProp in prefixMap) {
+  for (const styleProp in prefixMap) {
     if (prefixMap.hasOwnProperty(styleProp) && styleProp in style) {
       return (prefixedEventNames[eventName] = prefixMap[styleProp]);
     }
   }
 
-  return '';
+  return eventName;
 }
 
 export default getVendorPrefixedEventName;

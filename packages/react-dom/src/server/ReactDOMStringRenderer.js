@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -13,9 +13,13 @@ import ReactPartialRenderer from './ReactPartialRenderer';
  * See https://reactjs.org/docs/react-dom-server.html#rendertostring
  */
 export function renderToString(element) {
-  var renderer = new ReactPartialRenderer(element, false);
-  var markup = renderer.read(Infinity);
-  return markup;
+  const renderer = new ReactPartialRenderer(element, false);
+  try {
+    const markup = renderer.read(Infinity);
+    return markup;
+  } finally {
+    renderer.destroy();
+  }
 }
 
 /**
@@ -24,7 +28,11 @@ export function renderToString(element) {
  * See https://reactjs.org/docs/react-dom-server.html#rendertostaticmarkup
  */
 export function renderToStaticMarkup(element) {
-  var renderer = new ReactPartialRenderer(element, true);
-  var markup = renderer.read(Infinity);
-  return markup;
+  const renderer = new ReactPartialRenderer(element, true);
+  try {
+    const markup = renderer.read(Infinity);
+    return markup;
+  } finally {
+    renderer.destroy();
+  }
 }

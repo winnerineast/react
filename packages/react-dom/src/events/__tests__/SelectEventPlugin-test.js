@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -9,83 +9,137 @@
 
 'use strict';
 
-var React;
-var ReactDOM;
-var ReactDOMComponentTree;
-var ReactTestUtils;
-var SelectEventPlugin;
+let React;
+let ReactDOM;
 
 describe('SelectEventPlugin', () => {
-  function extract(node, topLevelEvent) {
-    return SelectEventPlugin.extractEvents(
-      topLevelEvent,
-      ReactDOMComponentTree.getInstanceFromNode(node),
-      {target: node},
-      node,
-    );
-  }
+  let container;
 
   beforeEach(() => {
     React = require('react');
     ReactDOM = require('react-dom');
-    ReactTestUtils = require('react-dom/test-utils');
-    // TODO: can we express this test with only public API?
-    ReactDOMComponentTree = require('../../client/ReactDOMComponentTree');
-    SelectEventPlugin = require('../SelectEventPlugin').default;
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
   });
 
-  it('should skip extraction if no listeners are present', () => {
-    class WithoutSelect extends React.Component {
-      render() {
-        return <input type="text" />;
-      }
-    }
-
-    var rendered = ReactTestUtils.renderIntoDocument(<WithoutSelect />);
-    var node = ReactDOM.findDOMNode(rendered);
-    node.focus();
-
-    // It seems that .focus() isn't triggering this event in our test
-    // environment so we need to ensure it gets set for this test to be valid.
-    var fakeNativeEvent = function() {};
-    fakeNativeEvent.target = node;
-    ReactTestUtils.simulateNativeEventOnNode('topFocus', node, fakeNativeEvent);
-
-    var mousedown = extract(node, 'topMouseDown');
-    expect(mousedown).toBe(null);
-
-    var mouseup = extract(node, 'topMouseUp');
-    expect(mouseup).toBe(null);
+  afterEach(() => {
+    document.body.removeChild(container);
+    container = null;
   });
 
-  it('should extract if an `onSelect` listener is present', () => {
-    class WithSelect extends React.Component {
-      render() {
-        return <input type="text" onSelect={this.props.onSelect} />;
-      }
-    }
+  // See https://github.com/facebook/react/pull/3639 for details.
+  it('does not get confused when dependent events are registered independently', () => {
+    const select = jest.fn();
+    const onSelect = event => {
+      expect(typeof event).toBe('object');
+      expect(event.type).toBe('select');
+      expect(event.target).toBe(node);
+      select(event.currentTarget);
+    };
 
-    var cb = jest.fn();
-
-    var rendered = ReactTestUtils.renderIntoDocument(
-      <WithSelect onSelect={cb} />,
+    // Pass `onMouseDown` so React registers a top-level listener.
+    const node = ReactDOM.render(
+      <input type="text" onMouseDown={function() {}} />,
+      container,
     );
-    var node = ReactDOM.findDOMNode(rendered);
 
-    node.selectionStart = 0;
-    node.selectionEnd = 0;
+    // Trigger `mousedown` and `mouseup`. Note that
+    // React is not currently listening to `mouseup`.
+    node.dispatchEvent(
+      new MouseEvent('mousedown', {
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    node.dispatchEvent(
+      new MouseEvent('mouseup', {
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+
+    // Now subscribe to `onSelect`.
+    ReactDOM.render(<input type="text" onSelect={onSelect} />, container);
     node.focus();
 
-    var focus = extract(node, 'topFocus');
-    expect(focus).toBe(null);
+    // This triggers a `select` event in our polyfill.
+    node.dispatchEvent(
+      new KeyboardEvent('keydown', {bubbles: true, cancelable: true}),
+    );
 
-    var mousedown = extract(node, 'topMouseDown');
-    expect(mousedown).toBe(null);
+    // Verify that it doesn't get "stuck" waiting for
+    // a `mouseup` event that it has "missed" because
+    // a top-level listener didn't exist yet.
+    expect(select).toHaveBeenCalledTimes(1);
+  });
 
-    var mouseup = extract(node, 'topMouseUp');
-    expect(mouseup).not.toBe(null);
-    expect(typeof mouseup).toBe('object');
-    expect(mouseup.type).toBe('select');
-    expect(mouseup.target).toBe(node);
+  it('should fire `onSelect` when a listener is present', () => {
+    const select = jest.fn();
+    const onSelect = event => {
+      expect(typeof event).toBe('object');
+      expect(event.type).toBe('select');
+      expect(event.target).toBe(node);
+      select(event.currentTarget);
+    };
+
+    const node = ReactDOM.render(
+      <input type="text" onSelect={onSelect} />,
+      container,
+    );
+    node.focus();
+
+    let nativeEvent = new MouseEvent('focus', {
+      bubbles: true,
+      cancelable: true,
+    });
+    node.dispatchEvent(nativeEvent);
+    expect(select).toHaveBeenCalledTimes(0);
+
+    nativeEvent = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+    });
+    node.dispatchEvent(nativeEvent);
+    expect(select).toHaveBeenCalledTimes(0);
+
+    nativeEvent = new MouseEvent('mouseup', {bubbles: true, cancelable: true});
+    node.dispatchEvent(nativeEvent);
+    expect(select).toHaveBeenCalledTimes(1);
+  });
+
+  // Regression test for https://github.com/facebook/react/issues/11379
+  it('should not wait for `mouseup` after receiving `dragend`', () => {
+    const select = jest.fn();
+    const onSelect = event => {
+      expect(typeof event).toBe('object');
+      expect(event.type).toBe('select');
+      expect(event.target).toBe(node);
+      select(event.currentTarget);
+    };
+
+    const node = ReactDOM.render(
+      <input type="text" onSelect={onSelect} />,
+      container,
+    );
+    node.focus();
+
+    let nativeEvent = new MouseEvent('focus', {
+      bubbles: true,
+      cancelable: true,
+    });
+    node.dispatchEvent(nativeEvent);
+    expect(select).toHaveBeenCalledTimes(0);
+
+    nativeEvent = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+    });
+    node.dispatchEvent(nativeEvent);
+    expect(select).toHaveBeenCalledTimes(0);
+
+    nativeEvent = new MouseEvent('dragend', {bubbles: true, cancelable: true});
+    node.dispatchEvent(nativeEvent);
+    expect(select).toHaveBeenCalledTimes(1);
   });
 });

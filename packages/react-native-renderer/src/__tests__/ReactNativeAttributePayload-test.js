@@ -1,16 +1,16 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
+ * @jest-environment node
  */
 'use strict';
 
-var ReactNativeAttributePayload = require('../ReactNativeAttributePayload');
-var ReactNativePropRegistry = require('../ReactNativePropRegistry').default;
+const ReactNativeAttributePayload = require('../ReactNativeAttributePayload');
 
-var diff = ReactNativeAttributePayload.diff;
+const diff = ReactNativeAttributePayload.diff;
 
 describe('ReactNativeAttributePayload', () => {
   it('should work with simple example', () => {
@@ -43,8 +43,8 @@ describe('ReactNativeAttributePayload', () => {
   });
 
   it('should use the diff attribute', () => {
-    var diffA = jest.fn((a, b) => true);
-    var diffB = jest.fn((a, b) => false);
+    const diffA = jest.fn((a, b) => true);
+    const diffB = jest.fn((a, b) => false);
     expect(
       diff(
         {a: [1], b: [3]},
@@ -57,8 +57,8 @@ describe('ReactNativeAttributePayload', () => {
   });
 
   it('should not use the diff attribute on addition/removal', () => {
-    var diffA = jest.fn();
-    var diffB = jest.fn();
+    const diffA = jest.fn();
+    const diffB = jest.fn();
     expect(
       diff({a: [1]}, {b: [2]}, {a: {diff: diffA}, b: {diff: diffB}}),
     ).toEqual({a: null, b: [2]});
@@ -103,7 +103,7 @@ describe('ReactNativeAttributePayload', () => {
   });
 
   it('should flatten nested styles and predefined styles', () => {
-    var validStyleAttribute = {someStyle: {foo: true, bar: true}};
+    const validStyleAttribute = {someStyle: {foo: true, bar: true}};
 
     expect(
       diff({}, {someStyle: [{foo: 1}, {bar: 2}]}, validStyleAttribute),
@@ -113,9 +113,9 @@ describe('ReactNativeAttributePayload', () => {
       diff({someStyle: [{foo: 1}, {bar: 2}]}, {}, validStyleAttribute),
     ).toEqual({foo: null, bar: null});
 
-    var barStyle = ReactNativePropRegistry.register({
+    const barStyle = {
       bar: 3,
-    });
+    };
 
     expect(
       diff(
@@ -127,7 +127,7 @@ describe('ReactNativeAttributePayload', () => {
   });
 
   it('should reset a value to a previous if it is removed', () => {
-    var validStyleAttribute = {someStyle: {foo: true, bar: true}};
+    const validStyleAttribute = {someStyle: {foo: true, bar: true}};
 
     expect(
       diff(
@@ -139,7 +139,7 @@ describe('ReactNativeAttributePayload', () => {
   });
 
   it('should not clear removed props if they are still in another slot', () => {
-    var validStyleAttribute = {someStyle: {foo: true, bar: true}};
+    const validStyleAttribute = {someStyle: {foo: true, bar: true}};
 
     expect(
       diff(
@@ -159,7 +159,7 @@ describe('ReactNativeAttributePayload', () => {
   });
 
   it('should clear a prop if a later style is explicit null/undefined', () => {
-    var validStyleAttribute = {someStyle: {foo: true, bar: true}};
+    const validStyleAttribute = {someStyle: {foo: true, bar: true}};
     expect(
       diff(
         {someStyle: [{}, {foo: 3, bar: 2}]},
@@ -186,7 +186,7 @@ describe('ReactNativeAttributePayload', () => {
 
     // Test the same case with object equality because an early bailout doesn't
     // work in this case.
-    var fooObj = {foo: 3};
+    const fooObj = {foo: 3};
     expect(
       diff(
         {someStyle: [{foo: 1}, fooObj]},
@@ -230,5 +230,45 @@ describe('ReactNativeAttributePayload', () => {
         {a: true, b: true, c: true},
       ),
     ).toEqual({a: null, c: true});
+  });
+
+  it('should skip changed functions', () => {
+    expect(
+      diff(
+        {
+          a: function() {
+            return 1;
+          },
+        },
+        {
+          a: function() {
+            return 9;
+          },
+        },
+        {a: true},
+      ),
+    ).toEqual(null);
+  });
+
+  it('should skip deeply-nested changed functions', () => {
+    expect(
+      diff(
+        {
+          wrapper: {
+            a: function() {
+              return 1;
+            },
+          },
+        },
+        {
+          wrapper: {
+            a: function() {
+              return 9;
+            },
+          },
+        },
+        {wrapper: true},
+      ),
+    ).toEqual(null);
   });
 });

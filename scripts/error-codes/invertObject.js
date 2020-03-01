@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -17,12 +17,12 @@
  *   { 0: 'MUCH ERROR', 1: 'SUCH WRONG' }
  */
 function invertObject(targetObj /* : ErrorMap */) /* : ErrorMap */ {
-  var result = {};
-  var mapKeys = Object.keys(targetObj);
+  const result = {};
+  const mapKeys = Object.keys(targetObj);
 
-  for (let i = 0; i < mapKeys.length; i++) {
-    var originalKey = mapKeys[i];
-    var originalVal = targetObj[originalKey];
+  // eslint-disable-next-line no-for-of-loops/no-for-of-loops
+  for (const originalKey of mapKeys) {
+    const originalVal = targetObj[originalKey];
 
     result[originalVal] = originalKey;
   }

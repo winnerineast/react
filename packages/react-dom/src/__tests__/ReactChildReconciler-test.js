@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -12,14 +12,10 @@
 
 'use strict';
 
-var React;
-var ReactTestUtils;
+let React;
+let ReactTestUtils;
 
 describe('ReactChildReconciler', () => {
-  function normalizeCodeLocInfo(str) {
-    return str && str.replace(/\(at .+?:\d+\)/g, '(at **)');
-  }
-
   beforeEach(() => {
     jest.resetModules();
 
@@ -30,7 +26,7 @@ describe('ReactChildReconciler', () => {
   function createIterable(array) {
     return {
       '@@iterator': function() {
-        var i = 0;
+        let i = 0;
         return {
           next() {
             const next = {
@@ -45,19 +41,43 @@ describe('ReactChildReconciler', () => {
     };
   }
 
-  it('warns for duplicated array keys', () => {
-    spyOn(console, 'error');
+  function makeIterableFunction(value) {
+    const fn = () => {};
+    fn['@@iterator'] = function iterator() {
+      let timesCalled = 0;
+      return {
+        next() {
+          const done = timesCalled++ > 0;
+          return {done, value: done ? undefined : value};
+        },
+      };
+    };
+    return fn;
+  }
 
+  it('does not treat functions as iterables', () => {
+    let node;
+    const iterableFunction = makeIterableFunction('foo');
+
+    expect(() => {
+      node = ReactTestUtils.renderIntoDocument(
+        <div>
+          <h1>{iterableFunction}</h1>
+        </div>,
+      );
+    }).toErrorDev('Functions are not valid as a React child');
+
+    expect(node.innerHTML).toContain(''); // h1
+  });
+
+  it('warns for duplicated array keys', () => {
     class Component extends React.Component {
       render() {
         return <div>{[<div key="1" />, <div key="1" />]}</div>;
       }
     }
 
-    ReactTestUtils.renderIntoDocument(<Component />);
-
-    expectDev(console.error.calls.count()).toBe(1);
-    expectDev(console.error.calls.argsFor(0)[0]).toContain(
+    expect(() => ReactTestUtils.renderIntoDocument(<Component />)).toErrorDev(
       'Keys should be unique so that components maintain their identity ' +
         'across updates. Non-unique keys may cause children to be ' +
         'duplicated and/or omitted — the behavior is unsupported and ' +
@@ -66,8 +86,6 @@ describe('ReactChildReconciler', () => {
   });
 
   it('warns for duplicated array keys with component stack info', () => {
-    spyOn(console, 'error');
-
     class Component extends React.Component {
       render() {
         return <div>{[<div key="1" />, <div key="1" />]}</div>;
@@ -86,18 +104,13 @@ describe('ReactChildReconciler', () => {
       }
     }
 
-    ReactTestUtils.renderIntoDocument(<GrandParent />);
-
-    expectDev(console.error.calls.count()).toBe(1);
-    expectDev(
-      normalizeCodeLocInfo(console.error.calls.argsFor(0)[0]),
-    ).toContain(
+    expect(() => ReactTestUtils.renderIntoDocument(<GrandParent />)).toErrorDev(
       'Encountered two children with the same key, `1`. ' +
         'Keys should be unique so that components maintain their identity ' +
         'across updates. Non-unique keys may cause children to be ' +
         'duplicated and/or omitted — the behavior is unsupported and ' +
-        'could change in a future version.',
-      '    in div (at **)\n' +
+        'could change in a future version.\n' +
+        '    in div (at **)\n' +
         '    in Component (at **)\n' +
         '    in Parent (at **)\n' +
         '    in GrandParent (at **)',
@@ -105,18 +118,13 @@ describe('ReactChildReconciler', () => {
   });
 
   it('warns for duplicated iterable keys', () => {
-    spyOn(console, 'error');
-
     class Component extends React.Component {
       render() {
         return <div>{createIterable([<div key="1" />, <div key="1" />])}</div>;
       }
     }
 
-    ReactTestUtils.renderIntoDocument(<Component />);
-
-    expectDev(console.error.calls.count()).toBe(1);
-    expectDev(console.error.calls.argsFor(0)[0]).toContain(
+    expect(() => ReactTestUtils.renderIntoDocument(<Component />)).toErrorDev(
       'Keys should be unique so that components maintain their identity ' +
         'across updates. Non-unique keys may cause children to be ' +
         'duplicated and/or omitted — the behavior is unsupported and ' +
@@ -125,8 +133,6 @@ describe('ReactChildReconciler', () => {
   });
 
   it('warns for duplicated iterable keys with component stack info', () => {
-    spyOn(console, 'error');
-
     class Component extends React.Component {
       render() {
         return <div>{createIterable([<div key="1" />, <div key="1" />])}</div>;
@@ -145,18 +151,13 @@ describe('ReactChildReconciler', () => {
       }
     }
 
-    ReactTestUtils.renderIntoDocument(<GrandParent />);
-
-    expectDev(console.error.calls.count()).toBe(1);
-    expectDev(
-      normalizeCodeLocInfo(console.error.calls.argsFor(0)[0]),
-    ).toContain(
+    expect(() => ReactTestUtils.renderIntoDocument(<GrandParent />)).toErrorDev(
       'Encountered two children with the same key, `1`. ' +
         'Keys should be unique so that components maintain their identity ' +
         'across updates. Non-unique keys may cause children to be ' +
         'duplicated and/or omitted — the behavior is unsupported and ' +
-        'could change in a future version.',
-      '    in div (at **)\n' +
+        'could change in a future version.\n' +
+        '    in div (at **)\n' +
         '    in Component (at **)\n' +
         '    in Parent (at **)\n' +
         '    in GrandParent (at **)',

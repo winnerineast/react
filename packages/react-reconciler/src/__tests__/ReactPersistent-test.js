@@ -1,49 +1,56 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
  * @emails react-core
+ * @jest-environment node
  */
 
 'use strict';
 
-var React;
-var ReactNoop;
-let ReactPortal;
+let React;
+let ReactNoopPersistent;
+let Scheduler;
 
 describe('ReactPersistent', () => {
   beforeEach(() => {
     jest.resetModules();
 
-    const ReactFeatureFlags = require('shared/ReactFeatureFlags');
-    ReactFeatureFlags.enableMutableReconciler = false;
-    ReactFeatureFlags.enablePersistentReconciler = true;
-    ReactFeatureFlags.enableNoopReconciler = false;
-
     React = require('react');
-    ReactNoop = require('react-noop-renderer');
-    ReactPortal = require('../ReactPortal');
+    ReactNoopPersistent = require('react-noop-renderer/persistent');
+    Scheduler = require('scheduler');
   });
 
-  const DEFAULT_ROOT_ID = 'persistent-test';
+  // Inlined from shared folder so we can run this test on a bundle.
+  function createPortal(children, containerInfo, implementation, key) {
+    return {
+      $$typeof: Symbol.for('react.portal'),
+      key: key == null ? null : '' + key,
+      children,
+      containerInfo,
+      implementation,
+    };
+  }
 
   function render(element) {
-    ReactNoop.renderToPersistentRootWithID(element, DEFAULT_ROOT_ID);
+    ReactNoopPersistent.render(element);
   }
 
   function div(...children) {
-    children = children.map(c => (typeof c === 'string' ? {text: c} : c));
-    return {type: 'div', children, prop: undefined};
+    children = children.map(c =>
+      typeof c === 'string' ? {text: c, hidden: false} : c,
+    );
+    return {type: 'div', children, prop: undefined, hidden: false};
   }
 
   function span(prop) {
-    return {type: 'span', children: [], prop};
+    return {type: 'span', children: [], prop, hidden: false};
   }
 
   function getChildren() {
-    return ReactNoop.getChildren(DEFAULT_ROOT_ID);
+    return ReactNoopPersistent.getChildren();
   }
 
   it('can update child nodes of a host instance', () => {
@@ -61,13 +68,13 @@ describe('ReactPersistent', () => {
     }
 
     render(<Foo text="Hello" />);
-    ReactNoop.flush();
-    var originalChildren = getChildren();
+    expect(Scheduler).toFlushWithoutYielding();
+    const originalChildren = getChildren();
     expect(originalChildren).toEqual([div(span())]);
 
     render(<Foo text="World" />);
-    ReactNoop.flush();
-    var newChildren = getChildren();
+    expect(Scheduler).toFlushWithoutYielding();
+    const newChildren = getChildren();
     expect(newChildren).toEqual([div(span(), span())]);
 
     expect(originalChildren).toEqual([div(span())]);
@@ -95,13 +102,13 @@ describe('ReactPersistent', () => {
     }
 
     render(<Foo text="Hello" />);
-    ReactNoop.flush();
-    var originalChildren = getChildren();
+    expect(Scheduler).toFlushWithoutYielding();
+    const originalChildren = getChildren();
     expect(originalChildren).toEqual([div(span('Hello'))]);
 
     render(<Foo text="World" />);
-    ReactNoop.flush();
-    var newChildren = getChildren();
+    expect(Scheduler).toFlushWithoutYielding();
+    const newChildren = getChildren();
     expect(newChildren).toEqual([div(span('Hello'), span('World'))]);
 
     expect(originalChildren).toEqual([div(span('Hello'))]);
@@ -121,13 +128,13 @@ describe('ReactPersistent', () => {
     }
 
     render(<Foo text="Hello" />);
-    ReactNoop.flush();
-    var originalChildren = getChildren();
+    expect(Scheduler).toFlushWithoutYielding();
+    const originalChildren = getChildren();
     expect(originalChildren).toEqual([div('Hello', span())]);
 
     render(<Foo text="World" />);
-    ReactNoop.flush();
-    var newChildren = getChildren();
+    expect(Scheduler).toFlushWithoutYielding();
+    const newChildren = getChildren();
     expect(newChildren).toEqual([div('World', span())]);
 
     expect(originalChildren).toEqual([div('Hello', span())]);
@@ -161,34 +168,26 @@ describe('ReactPersistent', () => {
     }
     const portalContainer = {rootID: 'persistent-portal-test', children: []};
     const emptyPortalChildSet = portalContainer.children;
-    render(
-      <Parent>
-        {ReactPortal.createPortal(<Child />, portalContainer, null)}
-      </Parent>,
-    );
-    ReactNoop.flush();
+    render(<Parent>{createPortal(<Child />, portalContainer, null)}</Parent>);
+    expect(Scheduler).toFlushWithoutYielding();
 
     expect(emptyPortalChildSet).toEqual([]);
 
-    var originalChildren = getChildren();
+    const originalChildren = getChildren();
     expect(originalChildren).toEqual([div()]);
-    var originalPortalChildren = portalContainer.children;
+    const originalPortalChildren = portalContainer.children;
     expect(originalPortalChildren).toEqual([div(span())]);
 
     render(
       <Parent>
-        {ReactPortal.createPortal(
-          <Child>Hello {'World'}</Child>,
-          portalContainer,
-          null,
-        )}
+        {createPortal(<Child>Hello {'World'}</Child>, portalContainer, null)}
       </Parent>,
     );
-    ReactNoop.flush();
+    expect(Scheduler).toFlushWithoutYielding();
 
-    var newChildren = getChildren();
+    const newChildren = getChildren();
     expect(newChildren).toEqual([div()]);
-    var newPortalChildren = portalContainer.children;
+    const newPortalChildren = portalContainer.children;
     expect(newPortalChildren).toEqual([div(span(), 'Hello ', 'World')]);
 
     expect(originalChildren).toEqual([div()]);
@@ -201,9 +200,9 @@ describe('ReactPersistent', () => {
 
     // Deleting the Portal, should clear its children
     render(<Parent />);
-    ReactNoop.flush();
+    expect(Scheduler).toFlushWithoutYielding();
 
-    var clearedPortalChildren = portalContainer.children;
+    const clearedPortalChildren = portalContainer.children;
     expect(clearedPortalChildren).toEqual([]);
 
     // The original is unchanged.
